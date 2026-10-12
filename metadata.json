@@ -1,0 +1,6 @@
+{
+  "name": "Apex University Placement & Clearance Portal",
+  "description": "Comprehensive university placement management and department no-dues clearance portal with real-time statistics, drive workflows, and student self-service.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
