@@ -84,6 +84,14 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
     const existingRolls = new Set(existingStudents.map((s) => s.rollNo.toLowerCase()));
     const batchRollsInFile = new Set<string>();
 
+    const knownDepartments = existingDepartments && existingDepartments.length > 0
+      ? existingDepartments
+      : portalStorage.getDepartments();
+    const deptRegistry = new Map<string, { slug: string; displayName: string }>();
+    for (const d of knownDepartments) {
+      deptRegistry.set(d.id, { slug: d.id, displayName: d.name });
+    }
+
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
@@ -390,6 +398,27 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
           console.warn('Student account creation note:', err);
         });
 
+        // Provision missing departments
+        const currentKnownDeptIds = new Set(
+          (existingDepartments && existingDepartments.length > 0
+            ? existingDepartments
+            : portalStorage.getDepartments()
+          ).map((d) => d.id)
+        );
+        const newDeptsToCreate: Array<{ id: string; name: string }> = [];
+        const seenNewDeptIds = new Set<string>();
+        for (const r of okRows) {
+          if (r.deptId && !currentKnownDeptIds.has(r.deptId) && !seenNewDeptIds.has(r.deptId)) {
+            seenNewDeptIds.add(r.deptId);
+            newDeptsToCreate.push({ id: r.deptId, name: r.department });
+          }
+        }
+        Promise.all(newDeptsToCreate.map((d) => createDepartmentIfMissing(d))).catch((err) => {
+          console.warn('Department creation note:', err);
+        });
+
+        const newDepartmentsCreated = newDeptsToCreate.length;
+
         // Generate credentials roster (password column omitted since all are Password@123)
         const credentials = newStudents.map((s) => ({
           rollNo: s.rollNo,
@@ -397,11 +426,12 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
           email: s.email,
         }));
 
-        onImportComplete(newStudents);
+        onImportComplete(newStudents, newDepartmentsCreated);
         setImportResults({
           importedCount: newStudents.length,
           skippedCount: duplicateRows.length,
           failedCount: errorRows.length,
+          newDepartmentsCreated,
           credentials,
         });
         setCurrentStep(3);
