@@ -1,0 +1,108 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access control for Placement Portal",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email", "description": "University email address" },
+        "name": { "type": "string", "description": "Full name" },
+        "role": { "type": "string", "enum": ["incharge", "student"], "description": "System role" },
+        "studentId": { "type": "string", "description": "Student ID if student" },
+        "rollNo": { "type": "string", "description": "Student roll number if student" },
+        "department": { "type": "string", "description": "Academic department" },
+        "active": { "type": "boolean", "description": "Whether account is active" },
+        "passwordChanged": { "type": "boolean", "description": "Whether temporary password was changed" },
+        "createdAt": { "type": "string", "description": "ISO creation timestamp" }
+      },
+      "required": ["uid", "email", "role", "active"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student registry record and academic profile",
+      "type": "object",
+      "properties": {
+        "rollNo": { "type": "string", "description": "Unique roll number" },
+        "studentId": { "type": "string", "description": "Student identifier" },
+        "email": { "type": "string", "format": "email", "description": "Student university email" },
+        "name": { "type": "string", "description": "Student full name" },
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "department": { "type": "string", "description": "Department name" },
+        "program": { "type": "string", "description": "Academic program" },
+        "year": { "type": "number", "description": "Year of study" },
+        "section": { "type": "string", "description": "Section" },
+        "batch": { "type": "string", "description": "Graduation batch year" },
+        "cgpa": { "type": "number", "description": "Cumulative GPA" },
+        "activeBacklogs": { "type": "number", "description": "Active backlog count" },
+        "isRegistered": { "type": "boolean", "description": "Placement registration status" },
+        "isEligible": { "type": "boolean", "description": "Eligibility status" },
+        "placementStatus": { "type": "string", "description": "Placement status" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      },
+      "required": ["rollNo", "email", "name"]
+    },
+    "Drive": {
+      "title": "Drive",
+      "description": "Campus recruitment drive record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Drive identifier" },
+        "company": { "type": "string", "description": "Hiring company name" },
+        "role": { "type": "string", "description": "Job designation" },
+        "packageLpa": { "type": "number", "description": "Salary package in LPA" },
+        "status": { "type": "string", "enum": ["Planned", "Open", "In Progress", "Completed", "Cancelled"] },
+        "deadline": { "type": "string", "description": "Application deadline" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      },
+      "required": ["id", "company", "role", "status"]
+    },
+    "ClearanceRecord": {
+      "title": "ClearanceRecord",
+      "description": "Student departmental no-dues clearance status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Record identifier" },
+        "studentId": { "type": "string", "description": "Student identifier" },
+        "categoryId": { "type": "string", "description": "Clearance category ID" },
+        "status": { "type": "string", "enum": ["Pending", "Cleared", "Not Applicable", "Rejected", "Further action required"] },
+        "remarks": { "type": "string", "description": "Officer remarks" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp" }
+      },
+      "required": ["id", "studentId", "categoryId", "status"]
+    },
+    "Department": {
+      "title": "Department",
+      "description": "Academic department created automatically from Excel/CSV import",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Normalized lowercase slug ID, e.g. ai-ml" },
+        "name": { "type": "string", "description": "Department display name" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      },
+      "required": ["id", "name"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User account documents containing authentication details and roles"
+    },
+    "/departments/{deptId}": {
+      "schema": "Department",
+      "description": "Academic department documents"
+    },
+    "/students/{rollNo}": {
+      "schema": "Student",
+      "description": "Student academic profiles and placement registry"
+    },
+    "/drives/{driveId}": {
+      "schema": "Drive",
+      "description": "Recruitment drives managed by placement officers"
+    },
+    "/clearances/{clearanceId}": {
+      "schema": "ClearanceRecord",
+      "description": "Department no-dues clearance records"
+    }
+  }
+}

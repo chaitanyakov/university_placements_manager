@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function currentUserDoc() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        : null;
+    }
+
+    function isIncharge() {
+      return isSignedIn() && currentUserDoc() != null && currentUserDoc().role == 'incharge';
+    }
+
+    function isStudent() {
+      return isSignedIn() && currentUserDoc() != null && currentUserDoc().role == 'student';
+    }
+
+    function isStudentOwner(studentId) {
+      return isStudent() && currentUserDoc().studentId == studentId;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isIncharge());
+      allow create, update: if isSignedIn() && (request.auth.uid == userId || isIncharge());
+      allow delete: if isIncharge();
+    }
+
+    match /departments/{deptId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isIncharge();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isIncharge();
+    }
+
+    match /students/{studentId} {
+      allow read: if isIncharge() || (isStudent() && resource != null && resource.data.studentId == currentUserDoc().studentId);
+      allow create, update: if isIncharge();
+      allow delete: if false;
+    }
+
+    match /drives/{driveId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isIncharge();
+    }
+
+    match /clearances/{clearanceId} {
+      allow read: if isIncharge() || (resource != null && isStudentOwner(resource.data.studentId));
+      allow create, update, delete: if isIncharge();
+    }
+
+    match /applications/{applicationId} {
+      allow read: if isIncharge() || (resource != null && isStudentOwner(resource.data.studentId));
+      allow create: if isIncharge() || (isStudent() && request.resource.data.studentId == currentUserDoc().studentId);
+      allow update, delete: if isIncharge();
+    }
+
+    match /test/{docId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}
