@@ -32,6 +32,14 @@ service cloud.firestore {
       allow delete: if isIncharge();
     }
 
+    // Departments collection
+    // Only the in-charge can create/write departments. Students can read departments but cannot write them.
+    match /departments/{deptId} {
+      allow read: if isSignedIn();
+      allow create: if isIncharge();
+      allow update, delete: if isIncharge();
+    }
+
     // Students collection
     match /students/{studentId} {
       allow read: if isSignedIn();

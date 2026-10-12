@@ -4,12 +4,32 @@
  */
 import * as XLSX from 'xlsx';
 
+export interface Department {
+  id: string; // normalized lowercase slug, e.g. "ai-ml", "cse", "it"
+  name: string; // display name, e.g. "AI & ML", "CSE"
+  createdAt?: string;
+}
+
+/**
+ * Normalizes a department name into a lowercase URL/ID slug.
+ * Example: "AI & ML" -> "ai-ml", "Computer Science & Engineering" -> "computer-science-engineering"
+ */
+export function getDepartmentSlug(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, ' ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 export interface Student {
   id: string;
   rollNo: string;
   name: string;
   email: string;
   department: string;
+  deptId?: string;
   program: string;
   year: number;
   section: string;
@@ -1315,6 +1335,7 @@ const STORAGE_KEYS = {
   USERS: 'apex_portal_users_v1',
   STUDENT_DOCS: 'apex_portal_student_docs_v1',
   PASSWORDS: 'apex_portal_passwords_v1',
+  DEPARTMENTS: 'apex_portal_departments_v1',
 };
 
 export function createInitialUserDocs(): Record<string, UserDoc> {
@@ -1427,6 +1448,14 @@ class PortalStorage {
 
   saveClearances(clearances: ClearanceRecord[]) {
     this.set(STORAGE_KEYS.CLEARANCES, clearances);
+  }
+
+  getDepartments(): Department[] {
+    return this.get<Department[]>(STORAGE_KEYS.DEPARTMENTS, []);
+  }
+
+  saveDepartments(departments: Department[]) {
+    this.set(STORAGE_KEYS.DEPARTMENTS, departments);
   }
 
   getCurrentUser(): AuthUser | null {
@@ -1580,6 +1609,7 @@ class PortalStorage {
     this.set(STORAGE_KEYS.USERS, createInitialUserDocs());
     this.set(STORAGE_KEYS.STUDENT_DOCS, createInitialStudentDocs());
     this.set(STORAGE_KEYS.PASSWORDS, {});
+    this.set(STORAGE_KEYS.DEPARTMENTS, []);
   }
 
   deleteStudentsCascade(studentIds: string[]): {

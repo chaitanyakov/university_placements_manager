@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Student,
+  Department,
+  getDepartmentSlug,
+  portalStorage,
   exportToCSV,
   exportToExcel,
 } from '../../services/placementNoDuesService';
-import { createStudentAccount } from '../../services/firebaseAuthService';
+import {
+  createStudentAccount,
+  createDepartmentIfMissing,
+} from '../../services/firebaseAuthService';
 import { PageHeader, Stepper, FileDropzone, ProgressBar } from '../../components/ui/FeedbackComponents';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -14,7 +20,8 @@ import { Download, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
 
 interface ImportStudentsPageProps {
   existingStudents: Student[];
-  onImportComplete: (newStudents: Student[]) => void;
+  existingDepartments?: Department[];
+  onImportComplete: (newStudents: Student[], newDepartmentsCreated?: number) => void;
   onNavigateToStudents: () => void;
 }
 
@@ -24,6 +31,7 @@ interface ParsedRow {
   name: string;
   email: string;
   department: string;
+  deptId: string;
   program: string;
   year: number;
   section: string;
@@ -37,6 +45,7 @@ interface ParsedRow {
 
 export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
   existingStudents,
+  existingDepartments = [],
   onImportComplete,
   onNavigateToStudents,
 }) => {
@@ -55,6 +64,7 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
     importedCount: number;
     skippedCount: number;
     failedCount: number;
+    newDepartmentsCreated: number;
     credentials: Array<{ rollNo: string; name: string; email: string }>;
   } | null>(null);
 
@@ -88,13 +98,18 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
       const rollNo = getVal('rollno') || getVal('roll_no') || getVal('roll') || cells[0] || '';
       const name = getVal('name') || getVal('student_name') || cells[1] || '';
       const email = getVal('email') || cells[2] || '';
-      const dept = getVal('department') || getVal('dept') || cells[3] || 'Computer Science & Engineering';
+      const rawDept =
+        getVal('department') ||
+        getVal('dept') ||
+        (headers.includes('department') || headers.includes('dept') ? '' : cells[3] || '');
       const program = getVal('program') || cells[4] || 'B.Tech';
       const year = parseInt(getVal('year') || cells[5] || '4', 10);
       const section = getVal('section') || cells[6] || 'A';
       const batch = getVal('batch') || cells[7] || '2025';
       const cgpa = parseFloat(getVal('cgpa') || cells[8] || '7.5');
       const backlogs = parseInt(getVal('backlogs') || cells[9] || '0', 10);
+
+      const cleanDept = rawDept.trim();
 
       let status: 'OK' | 'DUPLICATE' | 'ERROR' = 'OK';
       let issue: string | undefined = undefined;
@@ -109,6 +124,11 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
       } else if (batchRollsInFile.has(rollNo.toLowerCase())) {
         status = 'DUPLICATE';
         issue = `Row ${rowNum}: roll number ${rollNo} appears multiple times in file`;
+      } else if (!cleanDept) {
+        // In validation, the department cell is required. An empty department is an ERROR ("Department is required").
+        // A department that does not exist yet is NOT an error.
+        status = 'ERROR';
+        issue = 'Department is required';
       } else if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         status = 'ERROR';
         issue = `Row ${rowNum}: email format invalid (${email || 'empty'})`;
@@ -122,12 +142,27 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
 
       batchRollsInFile.add(rollNo.toLowerCase());
 
+      // Match department names case-insensitively after trimming spaces
+      // Use the first spelling in the file as the display name.
+      // Use a normalized lowercase slug as the document ID (e.g. "ai-ml" for "AI & ML").
+      let deptDisplayName = cleanDept;
+      let deptSlug = '';
+      if (cleanDept) {
+        deptSlug = getDepartmentSlug(cleanDept);
+        if (!deptRegistry.has(deptSlug)) {
+          deptRegistry.set(deptSlug, { slug: deptSlug, displayName: cleanDept });
+        }
+        const matched = deptRegistry.get(deptSlug)!;
+        deptDisplayName = matched.displayName;
+      }
+
       rows.push({
         rowNum,
         rollNo: rollNo.toUpperCase(),
         name,
         email: email.toLowerCase(),
-        department: dept,
+        department: deptDisplayName,
+        deptId: deptSlug,
         program,
         year: isNaN(year) ? 4 : year,
         section,
@@ -136,7 +171,7 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
         backlogs: isNaN(backlogs) ? 0 : backlogs,
         status,
         issue,
-        raw: { rollNo, name, email, dept, program, batch },
+        raw: { rollNo, name, email, dept: cleanDept, program, batch },
       });
     }
 

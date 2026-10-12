@@ -44,6 +44,7 @@ import {
   query,
   where,
   getDocs,
+  onSnapshot,
 } from 'firebase/firestore';
 
 import firebaseAppletConfig from '../../firebase-applet-config.json';
@@ -51,6 +52,7 @@ import {
   AuthUser,
   UserDoc,
   StudentDoc,
+  Department,
   portalStorage,
 } from './placementNoDuesService';
 
@@ -733,3 +735,88 @@ export async function toggleUserActiveStatus(uid: string, newActive: boolean): P
   // Update in portalStorage
   portalStorage.toggleUserActive(uid, newActive);
 }
+
+/**
+ * Real-time listener for the Firestore "departments" collection.
+ * Triggers callback on initial load and whenever any department is added, modified, or removed.
+ */
+export function subscribeDepartments(
+  callback: (departments: Department[]) => void
+): () => void {
+  try {
+    const colRef = collection(db, 'departments');
+    const unsubscribe = onSnapshot(
+      colRef,
+      (snapshot) => {
+        const list: Department[] = [];
+        snapshot.forEach((d) => {
+          const data = d.data();
+          list.push({
+            id: d.id,
+            name: data.name || d.id,
+            createdAt: data.createdAt,
+          });
+        });
+        // Sort alphabetically by display name
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        callback(list);
+      },
+      (err) => {
+        console.warn('Departments onSnapshot listener note:', err);
+        callback(portalStorage.getDepartments());
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Error setting up departments listener:', err);
+    callback(portalStorage.getDepartments());
+    return () => {};
+  }
+}
+
+/**
+ * Creates a department document in Firestore if it doesn't already exist (create-only).
+ * Never overwrites existing department documents.
+ */
+export async function createDepartmentIfMissing(dept: {
+  id: string;
+  name: string;
+}): Promise<boolean> {
+  const cleanId = dept.id.trim();
+  if (!cleanId) return false;
+
+  try {
+    const ref = doc(db, 'departments', cleanId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        id: cleanId,
+        name: dept.name.trim(),
+        createdAt: new Date().toISOString(),
+      });
+      // Also update local cache
+      const local = portalStorage.getDepartments();
+      if (!local.some((d) => d.id === cleanId)) {
+        portalStorage.saveDepartments([
+          ...local,
+          { id: cleanId, name: dept.name.trim(), createdAt: new Date().toISOString() },
+        ]);
+      }
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.warn(`Firestore createDepartmentIfMissing note for ${cleanId}:`, err);
+    // Still maintain local cache fallback
+    const local = portalStorage.getDepartments();
+    if (!local.some((d) => d.id === cleanId)) {
+      portalStorage.saveDepartments([
+        ...local,
+        { id: cleanId, name: dept.name.trim(), createdAt: new Date().toISOString() },
+      ]);
+      return true;
+    }
+    return false;
+  }
+}
+

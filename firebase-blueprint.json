@@ -70,12 +70,27 @@
         "updatedAt": { "type": "string", "description": "ISO timestamp" }
       },
       "required": ["id", "studentId", "categoryId", "status"]
+    },
+    "Department": {
+      "title": "Department",
+      "description": "Academic department created automatically from Excel/CSV import",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Normalized lowercase slug ID, e.g. ai-ml" },
+        "name": { "type": "string", "description": "Department display name" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      },
+      "required": ["id", "name"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
       "description": "User account documents containing authentication details and roles"
+    },
+    "/departments/{deptId}": {
+      "schema": "Department",
+      "description": "Academic department documents"
     },
     "/students/{rollNo}": {
       "schema": "Student",

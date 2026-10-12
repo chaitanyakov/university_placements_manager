@@ -11,6 +11,7 @@ export interface FilterField {
   label: string;
   options: FilterOption[];
   value: string;
+  disabled?: boolean;
 }
 
 interface FilterBarProps {
@@ -68,8 +69,11 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             </label>
             <select
               value={field.value}
+              disabled={field.disabled}
               onChange={(e) => onFilterChange(field.id, e.target.value)}
-              className="h-8 px-2.5 text-xs bg-[#FAF8F3] hover:bg-white border border-[#E4DFD3] rounded-[4px] text-[#1C1F1D] focus:bg-white focus:outline-none focus:border-[#1F4D3F] cursor-pointer"
+              className={`h-8 px-2.5 text-xs bg-[#FAF8F3] hover:bg-white border border-[#E4DFD3] rounded-[4px] text-[#1C1F1D] focus:bg-white focus:outline-none focus:border-[#1F4D3F] cursor-pointer ${
+                field.disabled ? 'opacity-50 cursor-not-allowed bg-[#F0EEE9] hover:bg-[#F0EEE9]' : ''
+              }`}
             >
               {field.options.map((opt) => (
                 <option key={opt.value} value={opt.value}>
