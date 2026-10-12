@@ -135,6 +135,7 @@ export interface UserDoc {
   studentId?: string;
   rollNo?: string;
   department?: string;
+  deptId?: string;
   active: boolean;
   passwordChanged: boolean;
   createdAt?: string;
@@ -146,6 +147,8 @@ export interface StudentDoc {
   email: string;
   name: string;
   uid: string;
+  department?: string;
+  deptId?: string;
   createdAt?: string;
 }
 
@@ -1406,7 +1409,7 @@ class PortalStorage {
   }
 
   getStudents(): Student[] {
-    const list = this.get<Student[]>(STORAGE_KEYS.STUDENTS, INITIAL_STUDENTS);
+    const list = this.get<Student[]>(STORAGE_KEYS.STUDENTS, []);
     return list.map((s) => ({
       ...s,
       email: `${s.rollNo.toLowerCase()}@apex.edu`,
@@ -1601,13 +1604,13 @@ class PortalStorage {
   }
 
   resetDemoData() {
-    this.set(STORAGE_KEYS.STUDENTS, INITIAL_STUDENTS);
+    this.set(STORAGE_KEYS.STUDENTS, []);
     this.set(STORAGE_KEYS.DRIVES, INITIAL_DRIVES);
-    this.set(STORAGE_KEYS.APPLICATIONS, INITIAL_APPLICATIONS);
+    this.set(STORAGE_KEYS.APPLICATIONS, []);
     this.set(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
-    this.set(STORAGE_KEYS.CLEARANCES, createInitialClearanceRecords());
+    this.set(STORAGE_KEYS.CLEARANCES, []);
     this.set(STORAGE_KEYS.USERS, createInitialUserDocs());
-    this.set(STORAGE_KEYS.STUDENT_DOCS, createInitialStudentDocs());
+    this.set(STORAGE_KEYS.STUDENT_DOCS, {});
     this.set(STORAGE_KEYS.PASSWORDS, {});
     this.set(STORAGE_KEYS.DEPARTMENTS, []);
   }
@@ -1946,6 +1949,127 @@ export function applyDriveFilters(drives: Drive[], filters: FilterCriteria): Dri
     }
     return true;
   });
+}
+
+// -------------------------------------------------------------
+// CLEARANCE APPROVAL & RESOLUTION HELPERS
+// -------------------------------------------------------------
+
+/**
+ * Grant complete clearance across all active categories for one or more students
+ */
+export function grantFullClearanceForStudents(
+  studentIds: string[],
+  categories: ClearanceCategory[],
+  existingClearances: ClearanceRecord[],
+  remarks = 'Institutional clearance approved by Placement In-Charge.',
+  updatedBy = 'Placement In-Charge'
+): ClearanceRecord[] {
+  const today = new Date().toISOString().split('T')[0];
+  const activeCategories = categories.filter((c) => c.isActive);
+  const recordsMap = new Map(existingClearances.map((c) => [`${c.studentId}-${c.categoryId}`, c]));
+
+  studentIds.forEach((stuId) => {
+    activeCategories.forEach((cat) => {
+      const key = `${stuId}-${cat.id}`;
+      const rec = recordsMap.get(key);
+      if (rec) {
+        recordsMap.set(key, {
+          ...rec,
+          status: 'Cleared',
+          remarks: remarks || rec.remarks || 'Cleared by Placement In-Charge',
+          pendingRequirements: [],
+          updatedAt: today,
+          updatedBy,
+        });
+      } else {
+        recordsMap.set(key, {
+          id: `rec-${stuId}-${cat.id}`,
+          studentId: stuId,
+          categoryId: cat.id,
+          status: 'Cleared',
+          remarks: remarks || 'Cleared by Placement In-Charge',
+          pendingRequirements: [],
+          updatedAt: today,
+          updatedBy,
+        });
+      }
+    });
+  });
+
+  return Array.from(recordsMap.values());
+}
+
+/**
+ * Update a single clearance category for a student
+ */
+export function updateStudentCategoryClearance(
+  studentId: string,
+  categoryId: string,
+  existingClearances: ClearanceRecord[],
+  status: ClearanceStatus = 'Cleared',
+  remarks = 'Approved by Placement In-Charge.',
+  pendingRequirements: string[] = [],
+  updatedBy = 'Placement In-Charge'
+): ClearanceRecord[] {
+  const today = new Date().toISOString().split('T')[0];
+  const recordsMap = new Map(existingClearances.map((c) => [`${c.studentId}-${c.categoryId}`, c]));
+  const key = `${studentId}-${categoryId}`;
+  const rec = recordsMap.get(key);
+
+  if (rec) {
+    recordsMap.set(key, {
+      ...rec,
+      status,
+      remarks,
+      pendingRequirements,
+      updatedAt: today,
+      updatedBy,
+    });
+  } else {
+    recordsMap.set(key, {
+      id: `rec-${studentId}-${categoryId}`,
+      studentId,
+      categoryId,
+      status,
+      remarks,
+      pendingRequirements,
+      updatedAt: today,
+      updatedBy,
+    });
+  }
+
+  return Array.from(recordsMap.values());
+}
+
+/**
+ * Creates default clearance records for newly enrolled students
+ */
+export function generateDefaultClearanceRecordsForStudents(
+  studentIds: string[],
+  categories: ClearanceCategory[],
+  initialStatus: ClearanceStatus = 'Pending'
+): ClearanceRecord[] {
+  const today = new Date().toISOString().split('T')[0];
+  const records: ClearanceRecord[] = [];
+  const activeCategories = categories.filter((c) => c.isActive);
+
+  studentIds.forEach((stuId) => {
+    activeCategories.forEach((cat) => {
+      records.push({
+        id: `rec-${stuId}-${cat.id}`,
+        studentId: stuId,
+        categoryId: cat.id,
+        status: initialStatus,
+        remarks: initialStatus === 'Cleared' ? 'Initial clearance certified' : 'Awaiting departmental verification',
+        pendingRequirements: [],
+        updatedAt: today,
+        updatedBy: 'Placement & Records Section',
+      });
+    });
+  });
+
+  return records;
 }
 
 // -------------------------------------------------------------

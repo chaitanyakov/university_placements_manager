@@ -23,8 +23,11 @@ import { PageHeader } from '../../components/ui/FeedbackComponents';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { UserPlus, CheckCircle, FileText, ExternalLink, Trash2, Mail, KeyRound, ShieldAlert, ShieldCheck, Loader2 } from 'lucide-react';
 
+import { Department } from '../../services/placementNoDuesService';
+
 interface StudentsPageProps {
   students: Student[];
+  departments?: Department[];
   onUpdateStudents: (updated: Student[]) => void;
   onDeleteStudents?: (studentIds: string[]) => void;
   applications: Application[];
@@ -37,6 +40,7 @@ interface StudentsPageProps {
 
 export const StudentsPage: React.FC<StudentsPageProps> = ({
   students,
+  departments = [],
   onUpdateStudents,
   onDeleteStudents,
   applications,
@@ -65,11 +69,19 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
   const [activeProfileTab, setActiveProfileTab] = useState('details');
   const [isAddStudentOpen, setIsAddStudentOpen] = useState(false);
 
+  // Departments live list
+  const allDepartments = useMemo(() => {
+    if (departments && departments.length > 0) {
+      return departments.map((d) => d.name);
+    }
+    return [];
+  }, [departments]);
+
   // New Student Form State
   const [newRollNo, setNewRollNo] = useState('');
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newDept, setNewDept] = useState('Computer Science & Engineering');
+  const [newDept, setNewDept] = useState(() => allDepartments[0] || '');
   const [newProgram, setNewProgram] = useState('B.Tech');
   const [newYear, setNewYear] = useState('4');
   const [newSection, setNewSection] = useState('A');
@@ -78,11 +90,6 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
   const [newBacklogs, setNewBacklogs] = useState('0');
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // Filter options
-  const allDepartments = useMemo(
-    () => Array.from(new Set(students.map((s) => s.department))).sort(),
-    [students]
-  );
   const allBatches = useMemo(
     () => Array.from(new Set(students.map((s) => s.batch))).sort(),
     [students]
@@ -93,8 +100,9 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
       id: 'department',
       label: 'Department',
       value: departmentFilter,
+      disabled: allDepartments.length === 0,
       options: [
-        { label: 'All Departments', value: 'All' },
+        { label: allDepartments.length === 0 ? 'No departments yet' : 'All Departments', value: 'All' },
         ...allDepartments.map((d) => ({ label: d, value: d })),
       ],
     },
@@ -561,7 +569,7 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
         )}
         exportFilename="apex_students_roster"
         pageSize={15}
-        emptyMessage="No students match the current filters."
+        emptyMessage={students.length === 0 ? "No students yet" : "No students match the current filters."}
       />
 
       {/* ============================================================= */}
@@ -1110,13 +1118,20 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
               <select
                 value={newDept}
                 onChange={(e) => setNewDept(e.target.value)}
-                className="h-9 px-3 text-xs bg-white border border-[#E4DFD3] rounded focus:border-[#1F4D3F]"
+                disabled={allDepartments.length === 0}
+                className="h-9 px-3 text-xs bg-white border border-[#E4DFD3] rounded focus:border-[#1F4D3F] disabled:opacity-50"
               >
-                {allDepartments.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
+                {allDepartments.length === 0 ? (
+                  <option value="" disabled>
+                    No departments yet
                   </option>
-                ))}
+                ) : (
+                  allDepartments.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))
+                )}
               </select>
             </FormField>
 

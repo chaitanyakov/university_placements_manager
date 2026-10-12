@@ -11,8 +11,10 @@ import {
   ClearanceCategory,
   ClearanceRecord,
   AuthUser,
+  Department,
   portalStorage,
 } from './services/placementNoDuesService';
+import { subscribeDepartments } from './services/firebaseAuthService';
 import { ToastProvider } from './components/ui/Toast';
 import { AppShell } from './components/layout/AppShell';
 import { LoginPage } from './pages/auth/LoginPage';
@@ -53,6 +55,17 @@ export default function App() {
   const [clearances, setClearances] = useState<ClearanceRecord[]>(() =>
     portalStorage.getClearances()
   );
+  const [departments, setDepartments] = useState<Department[]>(() =>
+    portalStorage.getDepartments()
+  );
+
+  // Firestore Realtime Listener for Departments Collection
+  useEffect(() => {
+    const unsubscribe = subscribeDepartments((liveDepts) => {
+      setDepartments(liveDepts);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Active Navigation Page
   const [currentPage, setCurrentPage] = useState<string>(() => {
@@ -154,6 +167,7 @@ export default function App() {
     setApplications(portalStorage.getApplications());
     setCategories(portalStorage.getCategories());
     setClearances(portalStorage.getClearances());
+    setDepartments(portalStorage.getDepartments());
   };
 
   // Navigation router helper
@@ -302,6 +316,7 @@ export default function App() {
                 applications={applications}
                 categories={categories}
                 clearances={clearances}
+                departments={departments}
                 onNavigate={handleNavigate}
                 onSelectStudent={(s) => {
                   setSelectedStudentForProfile(s);
@@ -313,6 +328,7 @@ export default function App() {
             {currentPage === 'students' && (
               <StudentsPage
                 students={students}
+                departments={departments}
                 onUpdateStudents={handleUpdateStudents}
                 onDeleteStudents={handleDeleteStudents}
                 applications={applications}
@@ -330,8 +346,10 @@ export default function App() {
             {currentPage === 'import-students' && (
               <ImportStudentsPage
                 existingStudents={students}
+                existingDepartments={departments}
                 onImportComplete={(newBatch) => {
                   handleUpdateStudents([...newBatch, ...students]);
+                  setDepartments(portalStorage.getDepartments());
                 }}
                 onNavigateToStudents={() => setCurrentPage('students')}
               />
@@ -343,6 +361,7 @@ export default function App() {
                 onUpdateDrives={handleUpdateDrives}
                 students={students}
                 applications={applications}
+                departments={departments}
                 onUpdateApplications={handleUpdateApplications}
                 onSelectStudent={(s) => {
                   setSelectedStudentForProfile(s);
@@ -357,6 +376,7 @@ export default function App() {
                 onUpdateApplications={handleUpdateApplications}
                 students={students}
                 drives={drives}
+                departments={departments}
                 onSelectStudent={(s) => {
                   setSelectedStudentForProfile(s);
                   setCurrentPage('students');
@@ -376,6 +396,7 @@ export default function App() {
                 students={students}
                 categories={categories}
                 clearances={clearances}
+                departments={departments}
                 onUpdateClearances={handleUpdateClearances}
                 onNavigateToStatements={(studentId) => {
                   setSelectedStudentForStatement(studentId);
@@ -401,6 +422,7 @@ export default function App() {
                 applications={applications}
                 categories={categories}
                 clearances={clearances}
+                departments={departments}
                 onNavigateToStatements={(studentId) => {
                   setSelectedStudentForStatement(studentId || null);
                   setCurrentPage('statements');

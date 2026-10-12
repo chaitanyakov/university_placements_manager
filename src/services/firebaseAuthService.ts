@@ -166,6 +166,8 @@ export async function createStudentAccount(params: {
   name: string;
   email: string;
   studentId: string;
+  deptId?: string;
+  department?: string;
 }): Promise<{ uid: string; email: string }> {
   const cleanEmail = params.email.trim().toLowerCase();
   const cleanRollNo = params.rollNo.trim().toUpperCase();
@@ -202,6 +204,8 @@ export async function createStudentAccount(params: {
     role: 'student',
     studentId: params.studentId,
     rollNo: cleanRollNo,
+    department: params.department,
+    deptId: params.deptId,
     active: true,
     passwordChanged: false,
     createdAt: new Date().toISOString(),
@@ -214,6 +218,8 @@ export async function createStudentAccount(params: {
     email: cleanEmail,
     name: params.name,
     uid,
+    department: params.department,
+    deptId: params.deptId,
     createdAt: new Date().toISOString(),
   };
 

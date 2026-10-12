@@ -15,11 +15,14 @@ import { Tooltip, PageHeader } from '../../components/ui/FeedbackComponents';
 import { useToast } from '../../components/ui/Toast';
 import { History, Clock, ArrowRight } from 'lucide-react';
 
+import { Department } from '../../services/placementNoDuesService';
+
 interface ApplicationsPageProps {
   applications: Application[];
   onUpdateApplications: (apps: Application[]) => void;
   students: Student[];
   drives: Drive[];
+  departments?: Department[];
   onSelectStudent?: (student: Student) => void;
 }
 
@@ -28,6 +31,7 @@ export const ApplicationsPage: React.FC<ApplicationsPageProps> = ({
   onUpdateApplications,
   students,
   drives,
+  departments = [],
   onSelectStudent,
 }) => {
   const { showToast } = useToast();
@@ -49,10 +53,12 @@ export const ApplicationsPage: React.FC<ApplicationsPageProps> = ({
     previousStage: ApplicationStage;
   } | null>(null);
 
-  const allDepartments = useMemo(
-    () => Array.from(new Set(students.map((s) => s.department))).sort(),
-    [students]
-  );
+  const allDepartments = useMemo(() => {
+    if (departments && departments.length > 0) {
+      return departments.map((d) => d.name);
+    }
+    return [];
+  }, [departments]);
   const allBatches = useMemo(
     () => Array.from(new Set(students.map((s) => s.batch))).sort(),
     [students]
@@ -67,8 +73,9 @@ export const ApplicationsPage: React.FC<ApplicationsPageProps> = ({
       id: 'dept',
       label: 'Department',
       value: deptFilter,
+      disabled: allDepartments.length === 0,
       options: [
-        { label: 'All Departments', value: 'All' },
+        { label: allDepartments.length === 0 ? 'No departments yet' : 'All Departments', value: 'All' },
         ...allDepartments.map((d) => ({ label: d, value: d })),
       ],
     },
@@ -417,7 +424,7 @@ export const ApplicationsPage: React.FC<ApplicationsPageProps> = ({
           }
           return undefined;
         }}
-        emptyMessage="No applications match the filter criteria."
+        emptyMessage={students.length === 0 ? "No students yet" : "No applications match the filter criteria."}
       />
 
       {/* ============================================================= */}

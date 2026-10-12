@@ -349,98 +349,115 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
     exportToExcel('apex_import_issues', data, 'Issues');
   };
 
-  const handleConfirmImport = () => {
+  const deptSummaryList = useMemo(() => {
+    const existingDeptSlugs = new Set((existingDepartments || []).map((d) => d.id));
+    const summaryMap = new Map<string, { slug: string; displayName: string; count: number; exists: boolean }>();
+
+    for (const r of parsedRows) {
+      if (!r.deptId) continue;
+      if (!summaryMap.has(r.deptId)) {
+        summaryMap.set(r.deptId, {
+          slug: r.deptId,
+          displayName: r.department,
+          count: 0,
+          exists: existingDeptSlugs.has(r.deptId),
+        });
+      }
+      summaryMap.get(r.deptId)!.count++;
+    }
+
+    return Array.from(summaryMap.values());
+  }, [parsedRows, existingDepartments]);
+
+  const handleConfirmImport = async () => {
     if (okRows.length === 0) return;
 
     setIsImporting(true);
     setImportProgress(0);
 
-    let progress = 0;
-    const total = okRows.length;
-    const interval = setInterval(() => {
-      progress++;
-      setImportProgress(progress);
+    // 1. Create missing departments before creating students (create-only, never overwrite existing ones)
+    const currentKnownDeptIds = new Set(
+      (existingDepartments && existingDepartments.length > 0
+        ? existingDepartments
+        : portalStorage.getDepartments()
+      ).map((d) => d.id)
+    );
+    const newDeptsToCreate: Array<{ id: string; name: string }> = [];
+    const seenNewDeptIds = new Set<string>();
+    for (const r of okRows) {
+      if (r.deptId && !currentKnownDeptIds.has(r.deptId) && !seenNewDeptIds.has(r.deptId)) {
+        seenNewDeptIds.add(r.deptId);
+        newDeptsToCreate.push({ id: r.deptId, name: r.department });
+      }
+    }
 
-      if (progress >= total) {
-        clearInterval(interval);
-        setIsImporting(false);
+    let newDepartmentsCreated = 0;
+    for (const d of newDeptsToCreate) {
+      try {
+        const created = await createDepartmentIfMissing(d);
+        if (created) newDepartmentsCreated++;
+      } catch (err) {
+        console.warn('Department creation note:', err);
+      }
+    }
 
-        // Create new Student objects
-        const newStudents: Student[] = okRows.map((r) => ({
-          id: `stu-${Date.now()}-${r.rollNo}`,
-          rollNo: r.rollNo,
-          name: r.name,
-          email: r.email,
-          department: r.department,
-          program: r.program,
-          year: r.year,
-          section: r.section,
-          batch: r.batch,
-          cgpa: r.cgpa,
-          activeBacklogs: r.backlogs,
-          isRegistered: true,
-          isEligible: r.backlogs === 0 && r.cgpa >= 6.0,
-          placementStatus: 'Unplaced',
-          skills: ['Aptitude', 'Core Engineering'],
-        }));
+    // 2. Create new Student objects storing deptId
+    const newStudents: Student[] = okRows.map((r) => ({
+      id: `stu-${Date.now()}-${r.rollNo}`,
+      rollNo: r.rollNo,
+      name: r.name,
+      email: r.email,
+      department: r.department,
+      deptId: r.deptId,
+      program: r.program,
+      year: r.year,
+      section: r.section,
+      batch: r.batch,
+      cgpa: r.cgpa,
+      activeBacklogs: r.backlogs,
+      isRegistered: true,
+      isEligible: r.backlogs === 0 && r.cgpa >= 6.0,
+      placementStatus: 'Unplaced',
+      skills: ['Aptitude', 'Core Engineering'],
+    }));
 
-        // Provision Firebase Auth & Firestore documents using secondary app instance
-        Promise.all(
-          newStudents.map((s) =>
-            createStudentAccount({
-              rollNo: s.rollNo,
-              name: s.name,
-              email: s.email,
-              studentId: s.id,
-            })
-          )
-        ).catch((err) => {
-          console.warn('Student account creation note:', err);
-        });
-
-        // Provision missing departments
-        const currentKnownDeptIds = new Set(
-          (existingDepartments && existingDepartments.length > 0
-            ? existingDepartments
-            : portalStorage.getDepartments()
-          ).map((d) => d.id)
-        );
-        const newDeptsToCreate: Array<{ id: string; name: string }> = [];
-        const seenNewDeptIds = new Set<string>();
-        for (const r of okRows) {
-          if (r.deptId && !currentKnownDeptIds.has(r.deptId) && !seenNewDeptIds.has(r.deptId)) {
-            seenNewDeptIds.add(r.deptId);
-            newDeptsToCreate.push({ id: r.deptId, name: r.department });
-          }
-        }
-        Promise.all(newDeptsToCreate.map((d) => createDepartmentIfMissing(d))).catch((err) => {
-          console.warn('Department creation note:', err);
-        });
-
-        const newDepartmentsCreated = newDeptsToCreate.length;
-
-        // Generate credentials roster (password column omitted since all are Password@123)
-        const credentials = newStudents.map((s) => ({
+    // Provision Firebase Auth & Firestore documents using secondary app instance
+    Promise.all(
+      newStudents.map((s) =>
+        createStudentAccount({
           rollNo: s.rollNo,
           name: s.name,
           email: s.email,
-        }));
+          studentId: s.id,
+          deptId: s.deptId,
+          department: s.department,
+        })
+      )
+    ).catch((err) => {
+      console.warn('Student account creation note:', err);
+    });
 
-        onImportComplete(newStudents, newDepartmentsCreated);
-        setImportResults({
-          importedCount: newStudents.length,
-          skippedCount: duplicateRows.length,
-          failedCount: errorRows.length,
-          newDepartmentsCreated,
-          credentials,
-        });
-        setCurrentStep(3);
-        showToast({
-          type: 'success',
-          message: `Successfully imported ${newStudents.length} student records and provisioned accounts.`,
-        });
-      }
-    }, 40);
+    // Generate credentials roster (password column omitted since all are Password@123)
+    const credentials = newStudents.map((s) => ({
+      rollNo: s.rollNo,
+      name: s.name,
+      email: s.email,
+    }));
+
+    onImportComplete(newStudents, newDepartmentsCreated);
+    setImportResults({
+      importedCount: newStudents.length,
+      skippedCount: duplicateRows.length,
+      failedCount: errorRows.length,
+      newDepartmentsCreated,
+      credentials,
+    });
+    setIsImporting(false);
+    setCurrentStep(3);
+    showToast({
+      type: 'success',
+      message: `Successfully imported ${newStudents.length} student records and created ${newDepartmentsCreated} new departments.`,
+    });
   };
 
   const handleDownloadCredentials = () => {
@@ -604,6 +621,23 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
             </Card>
           )}
 
+          {/* Departments found in this file summary box */}
+          {deptSummaryList.length > 0 && (
+            <div className="p-3.5 bg-white border border-[#E4DFD3] rounded-[6px] text-xs text-[#1C1F1D] leading-relaxed shadow-xs">
+              <span className="font-semibold text-[#1F4D3F]">Departments found in this file: </span>
+              {deptSummaryList.map((d, idx) => (
+                <span key={d.slug}>
+                  {idx > 0 && ' · '}
+                  <span className="font-medium">{d.displayName}</span> ({d.count} {d.count === 1 ? 'student' : 'students'},{' '}
+                  <span className={d.exists ? 'text-[#6B6F6A]' : 'text-[#1E5631] font-semibold'}>
+                    {d.exists ? 'already exists' : 'new'}
+                  </span>
+                  )
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Preview Table */}
           <Card padding="none" className="overflow-hidden">
             <div className="overflow-x-auto max-h-[460px]">
@@ -719,8 +753,13 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
       {/* ============================================================= */}
       {currentStep === 3 && importResults && (
         <div className="space-y-6 max-w-3xl mx-auto">
-          {/* Three plain stat blocks */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* Final report headline: N new departments created */}
+          <div className="p-4 bg-[#EAF3ED] border border-[#BCE1C7] rounded-[6px] text-center text-[#1E5631] font-medium text-sm">
+            {importResults.newDepartmentsCreated} new departments created
+          </div>
+
+          {/* Four stat blocks */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <Card padding="md" className="text-center">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6B6F6A]">
                 Imported
@@ -729,6 +768,16 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
                 {importResults.importedCount}
               </p>
               <p className="text-xs text-[#6B6F6A] mt-1">Accounts created</p>
+            </Card>
+
+            <Card padding="md" className="text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6B6F6A]">
+                New Depts
+              </p>
+              <p className="font-serif text-3xl font-medium text-[#1F4D3F] mt-1 tabular-nums">
+                {importResults.newDepartmentsCreated}
+              </p>
+              <p className="text-xs text-[#6B6F6A] mt-1">Departments created</p>
             </Card>
 
             <Card padding="md" className="text-center">

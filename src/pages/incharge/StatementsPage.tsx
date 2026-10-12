@@ -4,17 +4,29 @@ import {
   ClearanceCategory,
   ClearanceRecord,
   getStudentNoDuesStatus,
+  grantFullClearanceForStudents,
+  updateStudentCategoryClearance,
 } from '../../services/placementNoDuesService';
 import { StatusChip } from '../../components/ui/StatusChip';
 import { Button } from '../../components/ui/Button';
 import { PageHeader } from '../../components/ui/FeedbackComponents';
-import { Printer, Search, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
+import { useToast } from '../../components/ui/Toast';
+import {
+  Printer,
+  Search,
+  AlertTriangle,
+  CheckCircle,
+  CheckCircle2,
+  FileText,
+  Check,
+} from 'lucide-react';
 
 interface StatementsPageProps {
   students: Student[];
   categories: ClearanceCategory[];
   clearances: ClearanceRecord[];
   initialStudentId?: string | null;
+  onUpdateClearances?: (records: ClearanceRecord[]) => void;
 }
 
 export const StatementsPage: React.FC<StatementsPageProps> = ({
@@ -22,7 +34,9 @@ export const StatementsPage: React.FC<StatementsPageProps> = ({
   categories,
   clearances,
   initialStudentId,
+  onUpdateClearances,
 }) => {
+  const { showToast } = useToast();
   const [selectedStudentId, setSelectedStudentId] = useState<string>(
     initialStudentId || students[0]?.id || ''
   );
@@ -56,6 +70,37 @@ export const StatementsPage: React.FC<StatementsPageProps> = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleGrantClearance = () => {
+    if (!selectedStudent || !onUpdateClearances) return;
+    const nextClearances = grantFullClearanceForStudents(
+      [selectedStudent.id],
+      categories,
+      clearances,
+      'Certified & approved by Placement In-Charge for official graduation statement.'
+    );
+    onUpdateClearances(nextClearances);
+    showToast({
+      type: 'success',
+      message: `Approved all departmental clearances for ${selectedStudent.name}. Official No-Dues statement certified!`,
+    });
+  };
+
+  const handleQuickClearCategory = (catId: string, catName: string) => {
+    if (!selectedStudent || !onUpdateClearances) return;
+    const nextClearances = updateStudentCategoryClearance(
+      selectedStudent.id,
+      catId,
+      clearances,
+      'Cleared',
+      'Verified & approved by Placement In-Charge'
+    );
+    onUpdateClearances(nextClearances);
+    showToast({
+      type: 'success',
+      message: `Marked ${catName} as Cleared for ${selectedStudent.name}.`,
+    });
   };
 
   const isCleared = clearanceSummary?.status === 'Cleared';
@@ -98,9 +143,20 @@ export const StatementsPage: React.FC<StatementsPageProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {!isCleared && onUpdateClearances && selectedStudent && (
+            <Button
+              variant="primary"
+              size="md"
+              leftIcon={<CheckCircle2 className="w-4 h-4" />}
+              onClick={handleGrantClearance}
+              className="bg-[#1F4D3F] hover:bg-[#16382E] text-white"
+            >
+              Approve & Grant Clearance
+            </Button>
+          )}
           <Button
-            variant="primary"
+            variant={isCleared ? "primary" : "secondary"}
             size="md"
             leftIcon={<Printer className="w-4 h-4" />}
             onClick={handlePrint}
@@ -113,7 +169,11 @@ export const StatementsPage: React.FC<StatementsPageProps> = ({
       {/* ============================================================= */}
       {/* OFFICIAL PRINTABLE NO-DUES STATEMENT SHEET (A4 Editorial Style) */}
       {/* ============================================================= */}
-      {selectedStudent && clearanceSummary && (
+      {students.length === 0 ? (
+        <div className="bg-white border border-[#E4DFD3] rounded-[6px] p-12 text-center text-xs text-[#6B6F6A]">
+          No students yet
+        </div>
+      ) : selectedStudent && clearanceSummary && (
         <div className="bg-white border border-[#E4DFD3] rounded-[6px] p-8 sm:p-12 max-w-4xl mx-auto shadow-none print:border-none print:p-0 print:m-0 print:max-w-none print:shadow-none print-page">
           {/* Institutional Letterhead */}
           <div className="border-b-2 border-[#1C1F1D] pb-5 mb-6 text-center">
@@ -133,25 +193,40 @@ export const StatementsPage: React.FC<StatementsPageProps> = ({
 
           {/* Incomplete Banner if not fully cleared */}
           {!isCleared && (
-            <div className="mb-6 p-4 bg-[#FCECEE] border border-[#F6C6CA] rounded-[4px] text-xs text-[#9E2A2B]">
-              <div className="flex items-center gap-2 font-semibold text-sm">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>INCOMPLETE CLEARANCE — PROVISIONAL CERTIFICATE</span>
+            <div className="mb-6 p-4 bg-[#FCECEE] border border-[#F6C6CA] rounded-[4px] text-xs text-[#9E2A2B] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 font-semibold text-sm">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>INCOMPLETE CLEARANCE — PROVISIONAL CERTIFICATE</span>
+                </div>
+                <p className="mt-1 leading-relaxed">
+                  This document is a provisional record. Graduation clearance is incomplete due to outstanding department requirements.
+                </p>
+                {clearanceSummary.pendingRequirements.length > 0 && (
+                  <div className="mt-2.5 pt-2 border-t border-[#F6C6CA]/60 space-y-1">
+                    <span className="font-semibold uppercase text-[10px] tracking-wider block">
+                      Outstanding Items:
+                    </span>
+                    {clearanceSummary.pendingRequirements.map((req, i) => (
+                      <div key={i} className="flex items-center gap-1.5 text-xs">
+                        <span>•</span>
+                        <span>{req}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <p className="mt-1 leading-relaxed">
-                This document is a provisional record. Graduation clearance is incomplete due to outstanding department requirements.
-              </p>
-              {clearanceSummary.pendingRequirements.length > 0 && (
-                <div className="mt-2.5 pt-2 border-t border-[#F6C6CA]/60 space-y-1">
-                  <span className="font-semibold uppercase text-[10px] tracking-wider block">
-                    Outstanding Items:
-                  </span>
-                  {clearanceSummary.pendingRequirements.map((req, i) => (
-                    <div key={i} className="flex items-center gap-1.5 text-xs">
-                      <span>•</span>
-                      <span>{req}</span>
-                    </div>
-                  ))}
+              {onUpdateClearances && (
+                <div className="shrink-0 no-print">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    leftIcon={<CheckCircle2 className="w-4 h-4" />}
+                    onClick={handleGrantClearance}
+                    className="bg-[#1F4D3F] hover:bg-[#16382E] text-white whitespace-nowrap"
+                  >
+                    Approve All Dues Now
+                  </Button>
                 </div>
               )}
             </div>
@@ -269,7 +344,20 @@ export const StatementsPage: React.FC<StatementsPageProps> = ({
                         {rec?.updatedAt || '2026-10-10'}
                       </td>
                       <td className="px-4 py-2 text-right text-[#6B6F6A]">
-                        {rec?.updatedBy || 'Office of Registrar'}
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span>{rec?.updatedBy || 'Office of Registrar'}</span>
+                          {status !== 'Cleared' && onUpdateClearances && (
+                            <button
+                              type="button"
+                              onClick={() => handleQuickClearCategory(cat.id, cat.name)}
+                              className="no-print ml-1 text-[10px] font-semibold text-[#1F4D3F] hover:text-[#16382E] bg-[#EAF3ED] hover:bg-[#D4E8DC] px-1.5 py-0.5 rounded border border-[#CDE3D3] cursor-pointer inline-flex items-center gap-0.5"
+                              title={`Mark ${cat.name} as Cleared`}
+                            >
+                              <Check className="w-2.5 h-2.5" />
+                              <span>Clear</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

@@ -29,11 +29,14 @@ import {
   Users,
 } from 'lucide-react';
 
+import { Department } from '../../services/placementNoDuesService';
+
 interface DrivesPageProps {
   drives: Drive[];
   onUpdateDrives: (drives: Drive[]) => void;
   students: Student[];
   applications: Application[];
+  departments?: Department[];
   onUpdateApplications: (apps: Application[]) => void;
   onSelectStudent?: (student: Student) => void;
 }
@@ -43,6 +46,7 @@ export const DrivesPage: React.FC<DrivesPageProps> = ({
   onUpdateDrives,
   students,
   applications,
+  departments = [],
   onUpdateApplications,
   onSelectStudent,
 }) => {
@@ -75,10 +79,7 @@ export const DrivesPage: React.FC<DrivesPageProps> = ({
   const [newCompany, setNewCompany] = useState('');
   const [newRole, setNewRole] = useState('');
   const [newDesc, setNewDesc] = useState('');
-  const [newDepts, setNewDepts] = useState<string[]>([
-    'Computer Science & Engineering',
-    'Information Technology',
-  ]);
+  const [newDepts, setNewDepts] = useState<string[]>([]);
   const [newBatches, setNewBatches] = useState<string[]>(['2025']);
   const [newMinCgpa, setNewMinCgpa] = useState('7.5');
   const [newMaxBacklogs, setNewMaxBacklogs] = useState('0');
@@ -117,10 +118,12 @@ export const DrivesPage: React.FC<DrivesPageProps> = ({
     };
   }, [drives]);
 
-  const allDepartments = useMemo(
-    () => Array.from(new Set(students.map((s) => s.department))).sort(),
-    [students]
-  );
+  const allDepartments = useMemo(() => {
+    if (departments && departments.length > 0) {
+      return departments.map((d) => d.name);
+    }
+    return [];
+  }, [departments]);
   const allBatches = useMemo(
     () => Array.from(new Set(students.map((s) => s.batch))).sort(),
     [students]
@@ -144,8 +147,9 @@ export const DrivesPage: React.FC<DrivesPageProps> = ({
       id: 'department',
       label: 'Eligible Dept',
       value: deptFilter,
+      disabled: allDepartments.length === 0,
       options: [
-        { label: 'All Departments', value: 'All' },
+        { label: allDepartments.length === 0 ? 'No departments yet' : 'All Departments', value: 'All' },
         ...allDepartments.map((d) => ({ label: d, value: d })),
       ],
     },
@@ -1177,29 +1181,35 @@ export const DrivesPage: React.FC<DrivesPageProps> = ({
 
           {/* Eligible Departments Multi-select Chips */}
           <FormField label="Eligible Departments (Multi-select)">
-            <div className="flex flex-wrap gap-1.5 p-2 bg-[#FAF8F3] border border-[#E4DFD3] rounded">
-              {allDepartments.map((dept) => {
-                const isSelected = newDepts.includes(dept);
-                return (
-                  <button
-                    type="button"
-                    key={dept}
-                    onClick={() => {
-                      setNewDepts((prev) =>
-                        isSelected ? prev.filter((d) => d !== dept) : [...prev, dept]
-                      );
-                    }}
-                    className={`px-2.5 py-1 text-xs rounded transition-colors cursor-pointer border ${
-                      isSelected
-                        ? 'bg-[#1F4D3F] text-white border-[#1F4D3F]'
-                        : 'bg-white text-[#6B6F6A] border-[#E4DFD3] hover:text-[#1C1F1D]'
-                    }`}
-                  >
-                    {dept}
-                  </button>
-                );
-              })}
-            </div>
+            {allDepartments.length === 0 ? (
+              <p className="text-xs text-[#6B6F6A] p-2.5 bg-[#FAF8F3] border border-[#E4DFD3] rounded">
+                No departments yet. Import students to create departments.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 p-2 bg-[#FAF8F3] border border-[#E4DFD3] rounded">
+                {allDepartments.map((dept) => {
+                  const isSelected = newDepts.includes(dept);
+                  return (
+                    <button
+                      type="button"
+                      key={dept}
+                      onClick={() => {
+                        setNewDepts((prev) =>
+                          isSelected ? prev.filter((d) => d !== dept) : [...prev, dept]
+                        );
+                      }}
+                      className={`px-2.5 py-1 text-xs rounded transition-colors cursor-pointer border ${
+                        isSelected
+                          ? 'bg-[#1F4D3F] text-white border-[#1F4D3F]'
+                          : 'bg-white text-[#6B6F6A] border-[#E4DFD3] hover:text-[#1C1F1D]'
+                      }`}
+                    >
+                      {dept}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </FormField>
 
           {/* Eligible Batches Multi-select */}

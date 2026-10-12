@@ -30,6 +30,8 @@ import {
   DeptClearanceStackedChart,
 } from '../../components/dashboard/PlacementCharts';
 import { ArrowUpRight } from 'lucide-react';
+import { Button } from '../../components/ui/Button';
+import { Department } from '../../services/placementNoDuesService';
 
 interface DashboardPageProps {
   students: Student[];
@@ -37,6 +39,7 @@ interface DashboardPageProps {
   applications: Application[];
   categories: ClearanceCategory[];
   clearances: ClearanceRecord[];
+  departments?: Department[];
   onNavigate: (page: string, filterParams?: any) => void;
   onSelectStudent?: (student: Student) => void;
 }
@@ -47,19 +50,45 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   applications,
   categories,
   clearances,
+  departments = [],
   onNavigate,
   onSelectStudent,
 }) => {
+  // Empty State: when there are no students
+  if (students.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="bg-white border border-[#E4DFD3] rounded-[8px] p-12 text-center max-w-lg mx-auto my-12 space-y-4">
+          <p className="text-base text-[#1C1F1D] font-medium">
+            Import students to see placement analytics
+          </p>
+          <div>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => onNavigate('import-students')}
+            >
+              Import students
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Global Filter State
   const [departmentFilter, setDepartmentFilter] = useState('All');
   const [batchFilter, setBatchFilter] = useState('All');
   const [companyFilter, setCompanyFilter] = useState('All');
   const [driveStatusFilter, setDriveStatusFilter] = useState('All');
 
-  // Filter definitions
+  // Filter definitions live from departments collection
   const allDepartments = useMemo(() => {
-    return Array.from(new Set(students.map((s) => s.department))).sort();
-  }, [students]);
+    if (departments && departments.length > 0) {
+      return departments.map((d) => d.name);
+    }
+    return [];
+  }, [departments]);
 
   const allBatches = useMemo(() => {
     return Array.from(new Set(students.map((s) => s.batch))).sort();
@@ -74,8 +103,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       id: 'department',
       label: 'Department',
       value: departmentFilter,
+      disabled: allDepartments.length === 0,
       options: [
-        { label: 'All Departments', value: 'All' },
+        { label: allDepartments.length === 0 ? 'No departments yet' : 'All Departments', value: 'All' },
         ...allDepartments.map((d) => ({ label: d, value: d })),
       ],
     },
@@ -205,6 +235,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       return {
         department: dept,
         shortName: short,
+        totalStudents: deptStudents.length,
         eligible,
         placed,
         percentage: pct,
@@ -570,7 +601,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </h3>
               <span className="text-xs text-[#6B6F6A]">Unique Placed / Eligible</span>
             </div>
-            <DeptPlacementBarChart data={deptPlacementData} />
+            <DeptPlacementBarChart data={deptPlacementData.filter((d) => (d.totalStudents ?? 0) > 0)} />
           </Card>
 
           {/* Chart 2: Company-wise selections vs offers */}
@@ -871,7 +902,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </h3>
               <span className="text-xs text-[#6B6F6A]">Cleared vs Pending vs Rejected</span>
             </div>
-            <DeptClearanceStackedChart data={deptClearanceChartData} />
+            <DeptClearanceStackedChart data={deptClearanceChartData.filter((d) => d.total > 0)} />
           </Card>
 
           {/* Students with Rejected Clearances List */}

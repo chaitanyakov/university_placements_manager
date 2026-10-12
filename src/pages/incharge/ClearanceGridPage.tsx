@@ -4,8 +4,11 @@ import {
   ClearanceCategory,
   ClearanceRecord,
   ClearanceStatus,
+  Department,
   getStudentNoDuesStatus,
   exportToCSV,
+  grantFullClearanceForStudents,
+  updateStudentCategoryClearance,
 } from '../../services/placementNoDuesService';
 import { StatusChip } from '../../components/ui/StatusChip';
 import { Button } from '../../components/ui/Button';
@@ -15,12 +18,22 @@ import { Drawer } from '../../components/ui/Drawer';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { FormField, PageHeader, ProgressBar, Tabs } from '../../components/ui/FeedbackComponents';
 import { useToast } from '../../components/ui/Toast';
-import { Download, FileText, CheckCircle, AlertCircle, Layers } from 'lucide-react';
+import {
+  Download,
+  FileText,
+  CheckCircle,
+  CheckCircle2,
+  AlertCircle,
+  Layers,
+  Check,
+  Sparkles,
+} from 'lucide-react';
 
 interface ClearanceGridPageProps {
   students: Student[];
   categories: ClearanceCategory[];
   clearances: ClearanceRecord[];
+  departments?: Department[];
   onUpdateClearances: (records: ClearanceRecord[]) => void;
   onNavigateToStatements: (studentId: string) => void;
   initialFilterStatus?: string;
@@ -30,6 +43,7 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
   students,
   categories,
   clearances,
+  departments = [],
   onUpdateClearances,
   onNavigateToStatements,
   initialFilterStatus,
@@ -45,12 +59,17 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
   const [overallStatusFilter, setOverallStatusFilter] = useState(initialFilterStatus || 'All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Bulk Selection
+  // Bulk Selection (Grid Tab)
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [bulkCategoryModalOpen, setBulkCategoryModalOpen] = useState(false);
   const [bulkCategoryId, setBulkCategoryId] = useState(categories[0]?.id || '');
   const [bulkStatus, setBulkStatus] = useState<ClearanceStatus>('Cleared');
   const [bulkRemarks, setBulkRemarks] = useState('Bulk clearance approval granted.');
+
+  // Selection & Confirmation (Outstanding Dues List Tab)
+  const [selectedPendingStudentIds, setSelectedPendingStudentIds] = useState<string[]>([]);
+  const [isConfirmClearAllOpen, setIsConfirmClearAllOpen] = useState(false);
+  const [isConfirmClearSelectedOpen, setIsConfirmClearSelectedOpen] = useState(false);
 
   // Cell Edit Drawer
   const [editingCell, setEditingCell] = useState<{
@@ -69,10 +88,12 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
     [categories]
   );
 
-  const allDepartments = useMemo(
-    () => Array.from(new Set(students.map((s) => s.department))).sort(),
-    [students]
-  );
+  const allDepartments = useMemo(() => {
+    if (departments && departments.length > 0) {
+      return departments.map((d) => d.name);
+    }
+    return [];
+  }, [departments]);
   const allBatches = useMemo(
     () => Array.from(new Set(students.map((s) => s.batch))).sort(),
     [students]
@@ -83,8 +104,9 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
       id: 'department',
       label: 'Department',
       value: deptFilter,
+      disabled: allDepartments.length === 0,
       options: [
-        { label: 'All Departments', value: 'All' },
+        { label: allDepartments.length === 0 ? 'No departments yet' : 'All Departments', value: 'All' },
         ...allDepartments.map((d) => ({ label: d, value: d })),
       ],
     },
@@ -262,6 +284,58 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
     });
   };
 
+  // Grant Full Clearance (All Categories) to a Single Student
+  const handleGrantFullClearance = (student: Student) => {
+    const nextClearances = grantFullClearanceForStudents(
+      [student.id],
+      categories,
+      clearances,
+      'Institutional clearance approved by Placement In-Charge.'
+    );
+    onUpdateClearances(nextClearances);
+    setSelectedPendingStudentIds((prev) => prev.filter((id) => id !== student.id));
+    showToast({
+      type: 'success',
+      message: `Granted complete clearance for ${student.name} (${student.rollNo}). All dues resolved.`,
+    });
+  };
+
+  // Grant Full Clearance to Multiple Students
+  const handleGrantBulkFullClearance = (studentIds: string[]) => {
+    if (studentIds.length === 0) return;
+    const nextClearances = grantFullClearanceForStudents(
+      studentIds,
+      categories,
+      clearances,
+      'Bulk institutional clearance approved by Placement In-Charge.'
+    );
+    onUpdateClearances(nextClearances);
+    setSelectedStudentIds([]);
+    setSelectedPendingStudentIds([]);
+    setIsConfirmClearAllOpen(false);
+    setIsConfirmClearSelectedOpen(false);
+    showToast({
+      type: 'success',
+      message: `Granted complete clearance for ${studentIds.length} students.`,
+    });
+  };
+
+  // Quick Clear Single Category
+  const handleQuickClearCategory = (student: Student, category: ClearanceCategory) => {
+    const nextClearances = updateStudentCategoryClearance(
+      student.id,
+      category.id,
+      clearances,
+      'Cleared',
+      `Cleared by Placement In-Charge on ${new Date().toISOString().split('T')[0]}`
+    );
+    onUpdateClearances(nextClearances);
+    showToast({
+      type: 'success',
+      message: `Cleared ${category.name} due for ${student.name}.`,
+    });
+  };
+
   // Export Grid to CSV
   const handleExportGrid = () => {
     if (filteredGridRows.length === 0) return;
@@ -340,9 +414,17 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
       .filter((s) => {
         if (deptFilter !== 'All' && s.student.department !== deptFilter) return false;
         if (batchFilter !== 'All' && s.student.batch !== batchFilter) return false;
+        if (searchQuery.trim() !== '') {
+          const q = searchQuery.toLowerCase().trim();
+          return (
+            s.student.name.toLowerCase().includes(q) ||
+            s.student.rollNo.toLowerCase().includes(q) ||
+            s.student.department.toLowerCase().includes(q)
+          );
+        }
         return true;
       });
-  }, [studentClearanceData, deptFilter, batchFilter]);
+  }, [studentClearanceData, deptFilter, batchFilter, searchQuery]);
 
   return (
     <div className="space-y-6">
@@ -397,17 +479,26 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
 
           {/* Bulk Action Bar */}
           {selectedStudentIds.length > 0 && (
-            <div className="p-3 bg-[#FAF8F3] border border-[#1F4D3F] rounded-[6px] flex items-center justify-between gap-4">
+            <div className="p-3 bg-[#FAF8F3] border border-[#1F4D3F] rounded-[6px] flex flex-wrap items-center justify-between gap-3">
               <span className="text-xs font-semibold text-[#1F4D3F]">
-                {selectedStudentIds.length} students selected
+                {selectedStudentIds.length} candidate(s) selected
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   variant="primary"
                   size="sm"
+                  leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                  onClick={() => handleGrantBulkFullClearance(selectedStudentIds)}
+                  className="bg-[#1F4D3F] hover:bg-[#16382E] text-white"
+                >
+                  Grant Full Clearance ({selectedStudentIds.length} Students)
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setBulkCategoryModalOpen(true)}
                 >
-                  Bulk set category status
+                  Bulk set specific category...
                 </Button>
                 <Button
                   variant="ghost"
@@ -465,87 +556,114 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
                 </thead>
 
                 <tbody className="divide-y divide-[#E4DFD3]">
-                  {filteredGridRows.map(({ student, summary }) => {
-                    const isSelected = selectedStudentIds.includes(student.id);
-
-                    return (
-                      <tr
-                        key={student.id}
-                        className={`h-[44px] transition-colors group ${
-                          isSelected ? 'bg-[#F4F9F5]' : 'hover:bg-[#FAF8F3]'
-                        }`}
+                  {filteredGridRows.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={activeCategories.length + 3}
+                        className="py-12 px-4 text-center text-xs text-[#6B6F6A]"
                       >
-                        {/* Select checkbox */}
-                        <td className="px-3 py-2 text-center sticky left-0 bg-white group-hover:bg-[#FAF8F3] z-10 border-r border-[#E4DFD3]">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => {
-                              setSelectedStudentIds((prev) =>
-                                e.target.checked
-                                  ? [...prev, student.id]
-                                  : prev.filter((id) => id !== student.id)
-                              );
-                            }}
-                            className="rounded text-[#1F4D3F]"
-                          />
-                        </td>
+                        {students.length === 0 ? 'No students yet' : 'No records match the current criteria.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredGridRows.map(({ student, summary }) => {
+                      const isSelected = selectedStudentIds.includes(student.id);
 
-                        {/* Sticky Candidate info with Statement link */}
-                        <td className="px-4 py-2 sticky left-10 bg-white group-hover:bg-[#FAF8F3] z-10 border-r border-[#E4DFD3]">
-                          <div className="flex items-center justify-between gap-2">
-                            <div>
-                              <p className="font-medium text-[#1C1F1D]">{student.name}</p>
-                              <p className="text-[11px] text-[#6B6F6A] font-mono">
-                                {student.rollNo} · {student.department.replace(' Engineering', '').replace('Information Technology', 'IT')}
-                              </p>
+                      return (
+                        <tr
+                          key={student.id}
+                          className={`h-[44px] transition-colors group ${
+                            isSelected ? 'bg-[#F4F9F5]' : 'hover:bg-[#FAF8F3]'
+                          }`}
+                        >
+                          {/* Select checkbox */}
+                          <td className="px-3 py-2 text-center sticky left-0 bg-white group-hover:bg-[#FAF8F3] z-10 border-r border-[#E4DFD3]">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                setSelectedStudentIds((prev) =>
+                                  e.target.checked
+                                    ? [...prev, student.id]
+                                    : prev.filter((id) => id !== student.id)
+                                );
+                              }}
+                              className="rounded text-[#1F4D3F]"
+                            />
+                          </td>
+
+                          {/* Sticky Candidate info with Statement link */}
+                          <td className="px-4 py-2 sticky left-10 bg-white group-hover:bg-[#FAF8F3] z-10 border-r border-[#E4DFD3]">
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <p className="font-medium text-[#1C1F1D]">{student.name}</p>
+                                <p className="text-[11px] text-[#6B6F6A] font-mono">
+                                  {student.rollNo} · {student.department.replace(' Engineering', '').replace('Information Technology', 'IT')}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => onNavigateToStatements(student.id)}
+                                className="text-[11px] text-[#1F4D3F] hover:underline opacity-0 group-hover:opacity-100 transition-opacity font-medium inline-flex items-center gap-0.5 cursor-pointer whitespace-nowrap"
+                                title="Generate printed statement"
+                              >
+                                <FileText className="w-3 h-3" />
+                                <span>Statement</span>
+                              </button>
                             </div>
-                            <button
-                              onClick={() => onNavigateToStatements(student.id)}
-                              className="text-[11px] text-[#1F4D3F] hover:underline opacity-0 group-hover:opacity-100 transition-opacity font-medium inline-flex items-center gap-0.5 cursor-pointer whitespace-nowrap"
-                              title="Generate printed statement"
-                            >
-                              <FileText className="w-3 h-3" />
-                              <span>Statement</span>
-                            </button>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Category cells */}
-                        {activeCategories.map((cat) => {
-                          const record = summary.recordsMap.get(cat.id);
-                          const cellStatus = record ? record.status : 'Pending';
+                          {/* Category cells */}
+                          {activeCategories.map((cat) => {
+                            const record = summary.recordsMap.get(cat.id);
+                            const cellStatus = record ? record.status : 'Pending';
 
-                          return (
-                            <td
-                              key={cat.id}
-                              onClick={() => handleCellClick(student, cat)}
-                              className="px-3 py-2 text-center cursor-pointer hover:bg-[#EAF3ED]/40 transition-colors"
-                              title={`Click to edit ${cat.name} clearance`}
-                            >
-                              <StatusChip status={cellStatus} size="sm" />
-                            </td>
-                          );
-                        })}
+                            return (
+                              <td
+                                key={cat.id}
+                                onClick={() => handleCellClick(student, cat)}
+                                className="px-3 py-2 text-center cursor-pointer hover:bg-[#EAF3ED]/40 transition-colors"
+                                title={`Click to edit ${cat.name} clearance`}
+                              >
+                                <StatusChip status={cellStatus} size="sm" />
+                              </td>
+                            );
+                          })}
 
-                        {/* Overall column with thin progress bar */}
-                        <td className="px-4 py-2 sticky right-0 bg-white group-hover:bg-[#FAF8F3] z-10 border-l border-[#E4DFD3] text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <div className="w-16">
-                              <ProgressBar
-                                value={summary.clearedCount}
-                                max={summary.totalActive}
-                              />
+                          {/* Overall column with thin progress bar */}
+                          <td className="px-4 py-2 sticky right-0 bg-white group-hover:bg-[#FAF8F3] z-10 border-l border-[#E4DFD3] text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <div className="w-16">
+                                <ProgressBar
+                                  value={summary.clearedCount}
+                                  max={summary.totalActive}
+                                />
+                              </div>
+                              <StatusChip status={summary.status} size="sm" />
                             </div>
-                            <StatusChip status={summary.status} size="sm" />
-                          </div>
-                          <span className="text-[10px] text-[#6B6F6A] tabular-nums block mt-0.5">
-                            {summary.clearedCount} of {summary.totalActive} cleared
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                            <div className="flex items-center justify-end gap-2 mt-0.5">
+                              <span className="text-[10px] text-[#6B6F6A] tabular-nums block">
+                                {summary.clearedCount} of {summary.totalActive} cleared
+                              </span>
+                              {summary.status !== 'Cleared' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleGrantFullClearance(student);
+                                  }}
+                                  className="text-[10px] font-medium text-[#1F4D3F] hover:text-[#16382E] inline-flex items-center gap-0.5 hover:underline cursor-pointer bg-[#EAF3ED] px-1.5 py-0.5 rounded border border-[#CDE3D3]"
+                                  title="Instantly clear all dues for this student"
+                                >
+                                  <Check className="w-2.5 h-2.5" />
+                                  <span>Clear All</span>
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -577,32 +695,40 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E4DFD3]">
-                {consolidatedRows.map((row) => (
-                  <tr key={`${row.dept}-${row.batch}`} className="hover:bg-[#FAF8F3] h-10">
-                    <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.dept}</td>
-                    <td className="px-4 py-2 text-[#6B6F6A]">Batch {row.batch}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-[#1C1F1D]">
-                      {row.total}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums font-semibold text-[#1E5631]">
-                      {row.cleared}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-[#8C5E09]">
-                      {row.pending}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums font-semibold text-[#9E2A2B]">
-                      {row.rejected}
-                    </td>
-                    <td className="px-4 py-2">
-                      <div className="flex items-center gap-2">
-                        <ProgressBar value={row.pct} className="flex-1" />
-                        <span className="text-[11px] font-semibold text-[#1C1F1D] tabular-nums shrink-0 w-8 text-right">
-                          {row.pct}%
-                        </span>
-                      </div>
+                {consolidatedRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 px-4 text-center text-xs text-[#6B6F6A]">
+                      {students.length === 0 ? 'No students yet' : 'No records match the current criteria.'}
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  consolidatedRows.map((row) => (
+                    <tr key={`${row.dept}-${row.batch}`} className="hover:bg-[#FAF8F3] h-10">
+                      <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.dept}</td>
+                      <td className="px-4 py-2 text-[#6B6F6A]">Batch {row.batch}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-[#1C1F1D]">
+                        {row.total}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums font-semibold text-[#1E5631]">
+                        {row.cleared}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums text-[#8C5E09]">
+                        {row.pending}
+                      </td>
+                      <td className="px-4 py-2 text-right tabular-nums font-semibold text-[#9E2A2B]">
+                        {row.rejected}
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-2">
+                          <ProgressBar value={row.pct} className="flex-1" />
+                          <span className="text-[11px] font-semibold text-[#1C1F1D] tabular-nums shrink-0 w-8 text-right">
+                            {row.pct}%
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -610,81 +736,234 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
       )}
 
       {/* ============================================================= */}
+      {/* ============================================================= */}
       {/* VIEW 3: OUTSTANDING DUES LIST */}
       {/* ============================================================= */}
       {activeViewTab === 'pending-list' && (
         <Card padding="none" className="overflow-hidden">
-          <div className="p-4 border-b border-[#E4DFD3] bg-[#FCFBF8] flex items-center justify-between">
+          {/* Header */}
+          <div className="p-4 border-b border-[#E4DFD3] bg-[#FCFBF8] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h3 className="font-serif text-sm font-medium text-[#1C1F1D]">
                 Students with Pending or Rejected Clearances ({pendingStudentsList.length})
               </h3>
               <p className="text-xs text-[#6B6F6A] mt-0.5">
-                Outstanding dues preventing graduation clearance certificate issuance
+                Outstanding dues preventing graduation clearance certificate issuance. Select candidates to grant clearance individually or in bulk.
               </p>
             </div>
-          </div>
-          <div className="divide-y divide-[#E4DFD3]">
-            {pendingStudentsList.map(({ student, summary }) => {
-              // Gather unresolved categories
-              const pendingCats = activeCategories.filter((c) => {
-                const rec = summary.recordsMap.get(c.id);
-                return !rec || (rec.status !== 'Cleared' && rec.status !== 'Not Applicable');
-              });
-
-              return (
-                <div
-                  key={student.id}
-                  className="p-4 hover:bg-[#FAF8F3] flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+            {pendingStudentsList.length > 0 && (
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Sparkles className="w-3.5 h-3.5" />}
+                  onClick={() => setIsConfirmClearAllOpen(true)}
+                  className="bg-[#1F4D3F] hover:bg-[#16382E] text-white"
                 >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-xs text-[#1C1F1D]">
-                        {student.name}
-                      </span>
-                      <span className="text-[11px] text-[#6B6F6A] font-mono">
-                        ({student.rollNo})
-                      </span>
-                      <StatusChip status={summary.status} size="sm" />
-                    </div>
-                    <p className="text-xs text-[#6B6F6A] mt-0.5">
-                      {student.department} · Batch {student.batch}
-                    </p>
+                  Clear All ({pendingStudentsList.length}) Students
+                </Button>
+              </div>
+            )}
+          </div>
 
-                    {/* Pending category chips */}
-                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                      <span className="text-[11px] text-[#6B6F6A]">Pending sections:</span>
-                      {pendingCats.map((cat) => {
-                        const rec = summary.recordsMap.get(cat.id);
-                        return (
-                          <span
-                            key={cat.id}
-                            className={`text-[10px] px-2 py-0.5 rounded border ${
-                              rec?.status === 'Rejected'
-                                ? 'bg-[#FCECEE] text-[#9E2A2B] border-[#F6C6CA]'
-                                : 'bg-[#FDF6E2] text-[#8C5E09] border-[#F3E3B5]'
-                            }`}
-                          >
-                            {cat.name} ({rec?.status || 'Pending'})
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
+          {/* Subheader: Selection & Search Toolbar */}
+          <div className="p-3 border-b border-[#E4DFD3] bg-[#FAF8F3]/70 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-xs font-medium text-[#1C1F1D] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={
+                    pendingStudentsList.length > 0 &&
+                    selectedPendingStudentIds.length === pendingStudentsList.length
+                  }
+                  onChange={(e) => {
+                    setSelectedPendingStudentIds(
+                      e.target.checked ? pendingStudentsList.map((p) => p.student.id) : []
+                    );
+                  }}
+                  className="rounded text-[#1F4D3F]"
+                />
+                <span>Select all ({pendingStudentsList.length})</span>
+              </label>
+            </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      leftIcon={<FileText className="w-3.5 h-3.5" />}
-                      onClick={() => onNavigateToStatements(student.id)}
-                    >
-                      View Statement
-                    </Button>
-                  </div>
+            <div className="flex items-center gap-2 flex-1 max-w-sm justify-end">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search outstanding students..."
+                className="h-8 px-2.5 text-xs bg-white border border-[#E4DFD3] rounded text-[#1C1F1D] w-full max-w-xs focus:border-[#1F4D3F]"
+              />
+            </div>
+          </div>
+
+          {/* Floating Action Bar when students are selected */}
+          {selectedPendingStudentIds.length > 0 && (
+            <div className="p-3 bg-[#EAF3ED] border-b border-[#CDE3D3] flex flex-wrap items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-[#1E5631]">
+                {selectedPendingStudentIds.length} candidate(s) selected
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                  onClick={() => setIsConfirmClearSelectedOpen(true)}
+                  className="bg-[#1F4D3F] hover:bg-[#16382E] text-white"
+                >
+                  Grant Full Clearance to Selected ({selectedPendingStudentIds.length})
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedStudentIds(selectedPendingStudentIds);
+                    setBulkCategoryModalOpen(true);
+                  }}
+                >
+                  Bulk set specific category...
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedPendingStudentIds([])}
+                  className="text-xs text-[#6B6F6A]"
+                >
+                  Deselect all
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Student List */}
+          <div className="divide-y divide-[#E4DFD3]">
+            {pendingStudentsList.length === 0 ? (
+              <div className="p-12 text-center text-xs text-[#6B6F6A] space-y-2">
+                <div className="w-10 h-10 bg-[#EAF3ED] text-[#1E5631] rounded-full flex items-center justify-center mx-auto mb-3">
+                  <CheckCircle2 className="w-5 h-5" />
                 </div>
-              );
-            })}
+                <p className="font-serif text-base font-medium text-[#1C1F1D]">
+                  All students have obtained full institutional clearance!
+                </p>
+                <p className="max-w-md mx-auto text-[#6B6F6A]">
+                  Zero outstanding dues recorded across all departments and cohorts. Official No-Dues Statements can now be printed from the Statements page.
+                </p>
+              </div>
+            ) : (
+              pendingStudentsList.map(({ student, summary }) => {
+                const isPendingSelected = selectedPendingStudentIds.includes(student.id);
+
+                // Gather unresolved categories
+                const pendingCats = activeCategories.filter((c) => {
+                  const rec = summary.recordsMap.get(c.id);
+                  return !rec || (rec.status !== 'Cleared' && rec.status !== 'Not Applicable');
+                });
+
+                return (
+                  <div
+                    key={student.id}
+                    className={`p-4 hover:bg-[#FAF8F3] flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-colors ${
+                      isPendingSelected ? 'bg-[#F4F9F5]' : ''
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        checked={isPendingSelected}
+                        onChange={(e) => {
+                          setSelectedPendingStudentIds((prev) =>
+                            e.target.checked
+                              ? [...prev, student.id]
+                              : prev.filter((id) => id !== student.id)
+                          );
+                        }}
+                        className="mt-1 rounded text-[#1F4D3F]"
+                      />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-xs text-[#1C1F1D]">
+                            {student.name}
+                          </span>
+                          <span className="text-[11px] text-[#6B6F6A] font-mono">
+                            ({student.rollNo})
+                          </span>
+                          <StatusChip status={summary.status} size="sm" />
+                        </div>
+                        <p className="text-xs text-[#6B6F6A] mt-0.5">
+                          {student.department} · Batch {student.batch}
+                        </p>
+
+                        {/* Interactive Pending category chips */}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          <span className="text-[11px] text-[#6B6F6A]">Outstanding sections:</span>
+                          {pendingCats.map((cat) => {
+                            const rec = summary.recordsMap.get(cat.id);
+                            return (
+                              <div
+                                key={cat.id}
+                                className={`inline-flex items-center gap-1 text-[10px] pl-2 pr-1 py-0.5 rounded border transition-colors ${
+                                  rec?.status === 'Rejected'
+                                    ? 'bg-[#FCECEE] text-[#9E2A2B] border-[#F6C6CA]'
+                                    : 'bg-[#FDF6E2] text-[#8C5E09] border-[#F3E3B5]'
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => handleCellClick(student, cat)}
+                                  className="hover:underline font-medium cursor-pointer"
+                                  title="Click to view details or add notes"
+                                >
+                                  {cat.name} ({rec?.status || 'Pending'})
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuickClearCategory(student, cat)}
+                                  className="p-0.5 hover:bg-black/10 rounded cursor-pointer ml-0.5"
+                                  title={`Instantly clear ${cat.name}`}
+                                >
+                                  <Check className="w-3 h-3 text-current" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-end lg:self-center">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                        onClick={() => handleGrantFullClearance(student)}
+                        className="bg-[#1F4D3F] hover:bg-[#16382E] text-white"
+                        title="Clear all dues for this student in one click"
+                      >
+                        Clear All Dues
+                      </Button>
+                      {pendingCats[0] && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleCellClick(student, pendingCats[0])}
+                        >
+                          Edit Details
+                        </Button>
+                      )}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        leftIcon={<FileText className="w-3.5 h-3.5" />}
+                        onClick={() => onNavigateToStatements(student.id)}
+                      >
+                        Statement
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </Card>
       )}
@@ -700,17 +979,30 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
           subtitle={`${editingCell.student.name} (${editingCell.student.rollNo}) · ${editingCell.student.department}`}
           width="md"
           footer={
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-between w-full">
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => setEditingCell(null)}
+                leftIcon={<CheckCircle2 className="w-3.5 h-3.5 text-[#1F4D3F]" />}
+                onClick={() => {
+                  handleGrantFullClearance(editingCell.student);
+                  setEditingCell(null);
+                }}
               >
-                Cancel
+                Clear All Categories
               </Button>
-              <Button variant="primary" size="sm" onClick={handleSaveCell}>
-                Save Clearance
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setEditingCell(null)}
+                >
+                  Cancel
+                </Button>
+                <Button variant="primary" size="sm" onClick={handleSaveCell}>
+                  Save Clearance
+                </Button>
+              </div>
             </div>
           }
         >
@@ -857,6 +1149,34 @@ export const ClearanceGridPage: React.FC<ClearanceGridPageProps> = ({
             </FormField>
           </div>
         </Drawer>
+      )}
+
+      {/* CONFIRM: CLEAR ALL OUTSTANDING STUDENTS */}
+      {isConfirmClearAllOpen && (
+        <ConfirmDialog
+          isOpen={isConfirmClearAllOpen}
+          onClose={() => setIsConfirmClearAllOpen(false)}
+          onConfirm={() =>
+            handleGrantBulkFullClearance(pendingStudentsList.map((p) => p.student.id))
+          }
+          title={`Grant Full Clearance to ALL ${pendingStudentsList.length} Students?`}
+          message={`This will approve institutional clearance for all ${pendingStudentsList.length} outstanding candidate(s). All active categories will be set to Cleared, and official graduation certificates can be generated immediately.`}
+          confirmLabel={`Yes, Clear All ${pendingStudentsList.length} Students`}
+          variant="primary"
+        />
+      )}
+
+      {/* CONFIRM: CLEAR SELECTED OUTSTANDING STUDENTS */}
+      {isConfirmClearSelectedOpen && (
+        <ConfirmDialog
+          isOpen={isConfirmClearSelectedOpen}
+          onClose={() => setIsConfirmClearSelectedOpen(false)}
+          onConfirm={() => handleGrantBulkFullClearance(selectedPendingStudentIds)}
+          title={`Grant Full Clearance to ${selectedPendingStudentIds.length} Selected Students?`}
+          message={`This will mark all active clearance categories as Cleared for the ${selectedPendingStudentIds.length} selected candidate(s).`}
+          confirmLabel={`Confirm & Clear ${selectedPendingStudentIds.length} Students`}
+          variant="primary"
+        />
       )}
     </div>
   );

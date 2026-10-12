@@ -33,12 +33,15 @@ import {
   Printer,
 } from 'lucide-react';
 
+import { Department } from '../../services/placementNoDuesService';
+
 interface ReportsPageProps {
   students: Student[];
   drives: Drive[];
   applications: Application[];
   categories: ClearanceCategory[];
   clearances: ClearanceRecord[];
+  departments?: Department[];
   onNavigateToStatements: (studentId?: string) => void;
   initialReportId?: string;
 }
@@ -58,6 +61,7 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
   applications,
   categories,
   clearances,
+  departments = [],
   onNavigateToStatements,
   initialReportId,
 }) => {
@@ -76,10 +80,13 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
     day: 'numeric',
   });
 
-  const allDepartments = useMemo(
-    () => Array.from(new Set(students.map((s) => s.department))).sort(),
-    [students]
-  );
+  const allDepartments = useMemo(() => {
+    if (departments && departments.length > 0) {
+      return departments.map((d) => d.name);
+    }
+    return [];
+  }, [departments]);
+
   const allBatches = useMemo(
     () => Array.from(new Set(students.map((s) => s.batch))).sort(),
     [students]
@@ -94,8 +101,9 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
       id: 'department',
       label: 'Department',
       value: selectedDept,
+      disabled: allDepartments.length === 0,
       options: [
-        { label: 'All Departments', value: 'All' },
+        { label: allDepartments.length === 0 ? 'No departments yet' : 'All Departments', value: 'All' },
         ...allDepartments.map((d) => ({ label: d, value: d })),
       ],
     },
@@ -491,18 +499,26 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E4DFD3]">
-                    {deptStatsData.map((row) => (
-                      <tr key={row.department} className="hover:bg-[#FAF8F3] h-10">
-                        <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.department}</td>
-                        <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.registered}</td>
-                        <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.eligible}</td>
-                        <td className="px-4 py-2 text-right tabular-nums font-semibold text-[#1F4D3F]">{row.placed}</td>
-                        <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.offers}</td>
-                        <td className="px-4 py-2 text-right tabular-nums font-bold text-[#1C1F1D]">{row.placedPct}</td>
-                        <td className="px-4 py-2 text-right tabular-nums text-[#1C1F1D]">{row.highestPkg}</td>
-                        <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.avgPkg}</td>
+                    {deptStatsData.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-12 text-center text-[#6B6F6A]">
+                          No students yet
+                        </td>
                       </tr>
-                    ))}
+                    ) : (
+                      deptStatsData.map((row) => (
+                        <tr key={row.department} className="hover:bg-[#FAF8F3] h-10">
+                          <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.department}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.registered}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.eligible}</td>
+                          <td className="px-4 py-2 text-right tabular-nums font-semibold text-[#1F4D3F]">{row.placed}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.offers}</td>
+                          <td className="px-4 py-2 text-right tabular-nums font-bold text-[#1C1F1D]">{row.placedPct}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-[#1C1F1D]">{row.highestPkg}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.avgPkg}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                   {/* Summary Row */}
                   <tfoot className="bg-[#FAF8F3] border-t-2 border-[#E4DFD3] font-semibold text-[#1C1F1D]">
@@ -591,21 +607,29 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E4DFD3]">
-                    {studentHistoryData.map((row, i) => (
-                      <tr key={i} className="hover:bg-[#FAF8F3] h-10">
-                        <td className="px-4 py-2 font-mono font-medium text-[#1C1F1D]">{row.rollNo}</td>
-                        <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.name}</td>
-                        <td className="px-4 py-2 text-[#6B6F6A]">{row.department}</td>
-                        <td className="px-4 py-2 text-[#6B6F6A]">{row.batch}</td>
-                        <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.company}</td>
-                        <td className="px-4 py-2 text-[#6B6F6A]">{row.role}</td>
-                        <td className="px-4 py-2">
-                          <StatusChip status={row.stage} size="sm" />
+                    {studentHistoryData.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center text-[#6B6F6A]">
+                          {students.length === 0 ? 'No students yet' : 'No records match the current criteria.'}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums text-[#1F4D3F] font-semibold">{row.package}</td>
-                        <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.date}</td>
                       </tr>
-                    ))}
+                    ) : (
+                      studentHistoryData.map((row, i) => (
+                        <tr key={i} className="hover:bg-[#FAF8F3] h-10">
+                          <td className="px-4 py-2 font-mono font-medium text-[#1C1F1D]">{row.rollNo}</td>
+                          <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.name}</td>
+                          <td className="px-4 py-2 text-[#6B6F6A]">{row.department}</td>
+                          <td className="px-4 py-2 text-[#6B6F6A]">{row.batch}</td>
+                          <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.company}</td>
+                          <td className="px-4 py-2 text-[#6B6F6A]">{row.role}</td>
+                          <td className="px-4 py-2">
+                            <StatusChip status={row.stage} size="sm" />
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums text-[#1F4D3F] font-semibold">{row.package}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.date}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -632,18 +656,26 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E4DFD3]">
-                    {unplacedListData.map((row) => (
-                      <tr key={row.rollNo} className="hover:bg-[#FAF8F3] h-10">
-                        <td className="px-4 py-2 font-mono font-medium text-[#1C1F1D]">{row.rollNo}</td>
-                        <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.name}</td>
-                        <td className="px-4 py-2 text-[#6B6F6A]">{row.department}</td>
-                        <td className="px-4 py-2 text-[#6B6F6A]">{row.batch}</td>
-                        <td className="px-4 py-2 text-right tabular-nums font-semibold text-[#1C1F1D]">{row.cgpa}</td>
-                        <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.backlogs}</td>
-                        <td className="px-4 py-2 font-mono text-[#6B6F6A]">{row.email}</td>
-                        <td className="px-4 py-2 text-[#6B6F6A]">{row.phone}</td>
+                    {unplacedListData.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="py-12 text-center text-[#6B6F6A]">
+                          {students.length === 0 ? 'No students yet' : 'No eligible unplaced students found.'}
+                        </td>
                       </tr>
-                    ))}
+                    ) : (
+                      unplacedListData.map((row) => (
+                        <tr key={row.rollNo} className="hover:bg-[#FAF8F3] h-10">
+                          <td className="px-4 py-2 font-mono font-medium text-[#1C1F1D]">{row.rollNo}</td>
+                          <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.name}</td>
+                          <td className="px-4 py-2 text-[#6B6F6A]">{row.department}</td>
+                          <td className="px-4 py-2 text-[#6B6F6A]">{row.batch}</td>
+                          <td className="px-4 py-2 text-right tabular-nums font-semibold text-[#1C1F1D]">{row.cgpa}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.backlogs}</td>
+                          <td className="px-4 py-2 font-mono text-[#6B6F6A]">{row.email}</td>
+                          <td className="px-4 py-2 text-[#6B6F6A]">{row.phone}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -669,19 +701,27 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E4DFD3]">
-                    {pendingNoDuesData.map((row) => (
-                      <tr key={row.rollNo} className="hover:bg-[#FAF8F3] h-10">
-                        <td className="px-4 py-2 font-mono font-medium text-[#1C1F1D]">{row.rollNo}</td>
-                        <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.name}</td>
-                        <td className="px-4 py-2 text-[#6B6F6A]">{row.department}</td>
-                        <td className="px-4 py-2 text-[#6B6F6A]">{row.batch}</td>
-                        <td className="px-4 py-2">
-                          <StatusChip status={row.overallStatus} size="sm" />
+                    {pendingNoDuesData.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-[#6B6F6A]">
+                          {students.length === 0 ? 'No students yet' : 'No pending clearance records found.'}
                         </td>
-                        <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.clearedCount}</td>
-                        <td className="px-4 py-2 text-[#9E2A2B] text-xs">{row.pendingItems}</td>
                       </tr>
-                    ))}
+                    ) : (
+                      pendingNoDuesData.map((row) => (
+                        <tr key={row.rollNo} className="hover:bg-[#FAF8F3] h-10">
+                          <td className="px-4 py-2 font-mono font-medium text-[#1C1F1D]">{row.rollNo}</td>
+                          <td className="px-4 py-2 font-medium text-[#1C1F1D]">{row.name}</td>
+                          <td className="px-4 py-2 text-[#6B6F6A]">{row.department}</td>
+                          <td className="px-4 py-2 text-[#6B6F6A]">{row.batch}</td>
+                          <td className="px-4 py-2">
+                            <StatusChip status={row.overallStatus} size="sm" />
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums text-[#6B6F6A]">{row.clearedCount}</td>
+                          <td className="px-4 py-2 text-[#9E2A2B] text-xs">{row.pendingItems}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
