@@ -107,6 +107,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       {/* SLIM TOP BAR */}
       <header className="h-14 border-b border-[#E4DFD3] bg-[#F7F4EE] px-6 sm:px-10 flex items-center justify-between shrink-0 select-none">
         <div className="flex items-center gap-2">
+          <img
+            src="/hiresight-mark.jpg"
+            alt=""
+            className="h-8 w-8 rounded-md object-cover"
+          />
           <span className="font-serif text-lg sm:text-xl font-medium tracking-tight text-[#1C1F1D]">
             HireSight
           </span>

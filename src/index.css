@@ -12,9 +12,9 @@
     --muted: #6B6F6A;
     --border: #E4DFD3;
     --row-hover: #FAF8F3;
-    --primary: #1F4D3F;
-    --primary-hover: #173C31;
-    --accent: #C2501F;
+    --primary: #075EAB;
+    --primary-hover: #084A86;
+    --accent: #00AFA0;
   }
 
   body {
@@ -27,6 +27,74 @@
 
   h1, h2, h3, .font-serif, .kpi-num {
     font-family: 'Fraunces', Georgia, serif;
+  }
+}
+
+@layer utilities {
+  [class~="bg-[#1F4D3F]"] {
+    background-color: #075eab !important;
+  }
+
+  [class~="bg-[#173C31]"]:hover,
+  [class~="hover:bg-[#173C31]"]:hover,
+  [class~="hover:bg-[#16382E]"]:hover {
+    background-color: #084a86 !important;
+  }
+
+  [class~="text-[#1F4D3F]"] {
+    color: #075eab !important;
+  }
+
+  [class~="hover:text-[#1F4D3F]"]:hover {
+    color: #075eab !important;
+  }
+
+  [class~="border-[#1F4D3F]"] {
+    border-color: #075eab !important;
+  }
+
+  [class~="hover:border-[#1F4D3F]"]:hover {
+    border-color: #075eab !important;
+  }
+
+  [class~="focus:border-[#1F4D3F]"]:focus {
+    border-color: #075eab !important;
+  }
+
+  [class~="ring-[#1F4D3F]"] {
+    --tw-ring-color: #075eab !important;
+  }
+
+  [class~="focus-visible:ring-[#C2501F]"]:focus-visible {
+    --tw-ring-color: #00afa0 !important;
+  }
+
+  [class~="bg-[#C2501F]"] {
+    background-color: #00afa0 !important;
+  }
+
+  [class~="text-[#C2501F]"] {
+    color: #008f84 !important;
+  }
+
+  [class~="border-[#C2501F]"] {
+    border-color: #00afa0 !important;
+  }
+
+  [class~="bg-[#1E5631]"] {
+    background-color: #087a83 !important;
+  }
+
+  [class~="text-[#1E5631]"] {
+    color: #087a83 !important;
+  }
+
+  [class~="border-[#CDE3D3]"] {
+    border-color: #b9e6e0 !important;
+  }
+
+  [class~="bg-[#EAF3ED]"] {
+    background-color: #e7f7f5 !important;
   }
 }
 

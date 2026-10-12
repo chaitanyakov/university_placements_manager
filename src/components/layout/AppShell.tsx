@@ -93,9 +93,16 @@ export const AppShell: React.FC<AppShellProps> = ({
         <header className="sticky top-0 z-30 bg-white border-b border-[#E4DFD3] no-print">
           <div className="max-w-[1280px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
             <div className="flex items-center gap-6">
-              <span className="font-serif text-lg font-medium tracking-tight text-[#1C1F1D] whitespace-nowrap">
-                HireSight
-              </span>
+              <div className="flex items-center gap-2 whitespace-nowrap">
+                <img
+                  src="/hiresight-mark.jpg"
+                  alt=""
+                  className="h-8 w-8 rounded-md object-cover"
+                />
+                <span className="font-serif text-lg font-medium tracking-tight text-[#1C1F1D]">
+                  HireSight
+                </span>
+              </div>
               <nav className="hidden sm:flex items-center gap-1">
                 <button
                   onClick={() => onNavigate('my-placement')}
@@ -159,9 +166,16 @@ export const AppShell: React.FC<AppShellProps> = ({
           <aside className="hidden lg:flex w-[240px] bg-white border-r border-[#E4DFD3] flex-col shrink-0 sticky top-0 h-screen overflow-y-auto no-scrollbar z-20 no-print">
             {/* University Brand Header */}
             <div className="p-4 border-b border-[#E4DFD3]">
-              <h1 className="font-serif text-lg font-medium tracking-tight text-[#1C1F1D] leading-snug">
-                HireSight
-              </h1>
+              <div className="flex items-center gap-2">
+                <img
+                  src="/hiresight-mark.jpg"
+                  alt=""
+                  className="h-8 w-8 rounded-md object-cover"
+                />
+                <h1 className="font-serif text-lg font-medium tracking-tight text-[#1C1F1D] leading-snug">
+                  HireSight
+                </h1>
+              </div>
               <p className="text-[11px] uppercase tracking-[0.06em] text-[#6B6F6A] mt-0.5">
                 Placement & No-Dues
               </p>
@@ -317,9 +331,16 @@ export const AppShell: React.FC<AppShellProps> = ({
               />
               <div className="fixed inset-y-0 left-0 w-64 bg-white border-r border-[#E4DFD3] flex flex-col p-4 shadow-xl z-10">
                 <div className="flex items-center justify-between pb-3 border-b border-[#E4DFD3]">
-                  <span className="font-serif text-lg font-medium text-[#1C1F1D]">
-                    HireSight
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <img
+                      src="/hiresight-mark.jpg"
+                      alt=""
+                      className="h-8 w-8 rounded-md object-cover"
+                    />
+                    <span className="font-serif text-lg font-medium text-[#1C1F1D]">
+                      HireSight
+                    </span>
+                  </div>
                   <button
                     onClick={() => setMobileMenuOpen(false)}
                     className="p-1 text-[#6B6F6A]"

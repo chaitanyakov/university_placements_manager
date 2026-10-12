@@ -13,8 +13,9 @@ import { StatusChip } from '../../components/ui/StatusChip';
 import { Drawer } from '../../components/ui/Drawer';
 import { Tooltip, PageHeader } from '../../components/ui/FeedbackComponents';
 import { useToast } from '../../components/ui/Toast';
-import { History, Clock, ArrowRight, Award } from 'lucide-react';
+import { History, Clock, ArrowRight, Award, FileText, Loader2, Upload } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
+import { uploadOfferLetter } from '../../services/firebaseAuthService';
 
 import { Department } from '../../services/placementNoDuesService';
 
@@ -47,6 +48,7 @@ export const ApplicationsPage: React.FC<ApplicationsPageProps> = ({
 
   // Timeline History Drawer
   const [historyDrawerApp, setHistoryDrawerApp] = useState<Application | null>(null);
+  const [uploadingOfferLetterFor, setUploadingOfferLetterFor] = useState<string | null>(null);
 
   // Undo state storage
   const [undoSnapshot, setUndoSnapshot] = useState<{
@@ -242,6 +244,35 @@ export const ApplicationsPage: React.FC<ApplicationsPageProps> = ({
         },
       },
     });
+  };
+
+  const handleOfferLetterUpload = async (
+    app: Application,
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!isApplicationValidOffer(app, drives)) {
+      showToast({ type: 'error', message: 'Move this application to Selected, Offer, or Joined before uploading a letter.' });
+      return;
+    }
+
+    setUploadingOfferLetterFor(app.id);
+    try {
+      await uploadOfferLetter(app.id, file);
+      showToast({
+        type: 'success',
+        message: `Offer letter published for ${students.find((student) => student.id === app.studentId)?.name || 'student'}.`,
+      });
+    } catch (error) {
+      showToast({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'Could not upload the offer letter.',
+      });
+    } finally {
+      setUploadingOfferLetterFor(null);
+    }
   };
 
   // Table Columns
@@ -453,13 +484,40 @@ export const ApplicationsPage: React.FC<ApplicationsPageProps> = ({
         pageSize={15}
         exportFilename="hiresight_applications_tracker"
         rowActions={(app) => (
-          <button
-            onClick={() => setHistoryDrawerApp(app)}
-            className="p-1.5 text-[#6B6F6A] hover:text-[#1F4D3F] hover:bg-[#FAF8F3] rounded cursor-pointer transition-colors"
-            title="View stage history timeline"
-          >
-            <History className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setHistoryDrawerApp(app)}
+              className="p-1.5 text-[#6B6F6A] hover:text-[#1F4D3F] hover:bg-[#FAF8F3] rounded cursor-pointer transition-colors"
+              title="View stage history timeline"
+            >
+              <History className="w-4 h-4" />
+            </button>
+            {isApplicationValidOffer(app, drives) && (
+              <label
+                className={`p-1.5 rounded transition-colors ${
+                  uploadingOfferLetterFor === app.id
+                    ? 'text-[#6B6F6A] cursor-wait'
+                    : 'text-[#6B6F6A] hover:text-[#1F4D3F] hover:bg-[#FAF8F3] cursor-pointer'
+                }`}
+                title={app.offerLetterPath ? 'Replace offer letter PDF' : 'Upload offer letter PDF'}
+              >
+                {uploadingOfferLetterFor === app.id ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : app.offerLetterPath ? (
+                  <FileText className="w-4 h-4" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="sr-only"
+                  disabled={uploadingOfferLetterFor === app.id}
+                  onChange={(event) => void handleOfferLetterUpload(app, event)}
+                />
+              </label>
+            )}
+          </div>
         )}
         rowDimmed={(app) => {
           const drive = drives.find((d) => d.id === app.driveId);

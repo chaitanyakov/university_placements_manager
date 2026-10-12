@@ -195,6 +195,9 @@ export interface Application {
   stageHistory: Array<{ stage: ApplicationStage; timestamp: string; notes?: string }>;
   packageLpa?: number;
   isOfferPublished: boolean;
+  offerLetterPath?: string;
+  offerLetterName?: string;
+  offerLetterUploadedAt?: string;
   updatedAt: string;
   nextActionDate?: string;
   sourceData?: Record<string, unknown>;

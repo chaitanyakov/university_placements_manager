@@ -48,6 +48,13 @@ import {
   getDocs,
   onSnapshot,
 } from 'firebase/firestore';
+import {
+  deleteObject,
+  getDownloadURL,
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+} from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
 import firebaseAppletConfig from '../../firebase-applet-config.json';
@@ -87,6 +94,7 @@ export const db = getFirestore(
   primaryApp,
   (firebaseAppletConfig as any).firestoreDatabaseId || undefined
 );
+const storage = getStorage(primaryApp);
 const functions = getFunctions(primaryApp, 'us-central1');
 
 export async function deleteStudentFirebaseAccounts(
@@ -100,6 +108,50 @@ export async function deleteStudentFirebaseAccounts(
     { deletedCount: number }
   >(functions, 'deleteStudentAccounts');
   await deleteStudents({ students });
+}
+
+export async function uploadOfferLetter(
+  applicationId: string,
+  file: File
+): Promise<void> {
+  if (!auth.currentUser) {
+    throw new Error('Sign in as a placement officer before uploading an offer letter.');
+  }
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    throw new Error('Offer letters must be PDF files.');
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error('Offer letters must be 10 MB or smaller.');
+  }
+  if (await file.slice(0, 5).text() !== '%PDF-') {
+    throw new Error('The selected file is not a valid PDF.');
+  }
+
+  const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const path = `offer-letters/${applicationId}/${Date.now()}-${safeFileName}`;
+  const fileRef = storageRef(storage, path);
+
+  await uploadBytes(fileRef, file, { contentType: 'application/pdf' });
+  try {
+    await updateDoc(doc(db, 'applications', applicationId), {
+      offerLetterPath: path,
+      offerLetterName: file.name,
+      offerLetterUploadedAt: new Date().toISOString(),
+      isOfferPublished: true,
+      updatedAt: new Date().toISOString().slice(0, 10),
+    });
+  } catch (error) {
+    try {
+      await deleteObject(fileRef);
+    } catch (cleanupError) {
+      console.error('Could not remove an offer letter after its Firestore update failed:', cleanupError);
+    }
+    throw error;
+  }
+}
+
+export async function getOfferLetterDownloadUrl(path: string): Promise<string> {
+  return getDownloadURL(storageRef(storage, path));
 }
 
 // Validate connection to Firestore at app startup

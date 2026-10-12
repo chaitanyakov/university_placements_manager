@@ -19,7 +19,9 @@ import {
   Briefcase,
   ChevronRight,
   X,
+  FileText,
 } from 'lucide-react';
+import { getOfferLetterDownloadUrl } from '../../services/firebaseAuthService';
 
 interface StudentPlacementPageProps {
   student: Student;
@@ -53,6 +55,7 @@ export const StudentPlacementPage: React.FC<StudentPlacementPageProps> = ({
 }) => {
   const { showToast } = useToast();
   const [isBannerDismissed, setIsBannerDismissed] = React.useState(false);
+  const [openingOfferLetterFor, setOpeningOfferLetterFor] = React.useState<string | null>(null);
 
   // Student's own applications ONLY
   const myApplications = applications.filter((a) => a.studentId === student.id);
@@ -244,6 +247,7 @@ export const StudentPlacementPage: React.FC<StudentPlacementPageProps> = ({
               const drive = drives.find((d) => d.id === app.driveId);
               const isRejected = app.stage === 'Rejected' || app.stage === 'Withdrawn';
               const currentStageIdx = STAGE_ORDER.indexOf(app.stage);
+              const offerLetterPath = app.offerLetterPath;
 
               return (
                 <div
@@ -259,7 +263,36 @@ export const StudentPlacementPage: React.FC<StudentPlacementPageProps> = ({
                         <StatusChip status={drive?.status || 'Open'} size="sm" />
                       </div>
                       <p className="text-xs text-[#6B6F6A] mt-0.5">{app.role}</p>
-                    </div>
+                      {app.isOfferPublished && offerLetterPath && (
+                        <button
+                          type="button"
+                          disabled={openingOfferLetterFor === app.id}
+                          onClick={async () => {
+                            const preview = window.open('about:blank', '_blank');
+                            if (!preview) {
+                              showToast({ type: 'error', message: 'Allow pop-ups to open the offer letter.' });
+                              return;
+                            }
+                            setOpeningOfferLetterFor(app.id);
+                            try {
+                              preview.location.href = await getOfferLetterDownloadUrl(offerLetterPath);
+                            } catch (error) {
+                              preview.close();
+                              showToast({
+                                type: 'error',
+                                message: error instanceof Error ? error.message : 'Could not open the offer letter.',
+                              });
+                            } finally {
+                              setOpeningOfferLetterFor(null);
+                            }
+                          }}
+                          className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#1F4D3F] hover:underline disabled:opacity-60"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          {openingOfferLetterFor === app.id ? 'Opening offer letter…' : `View offer letter${app.offerLetterName ? ` (${app.offerLetterName})` : ''}`}
+                        </button>
+                      )}
+                        </div>
 
                     <div className="flex items-center gap-2">
                       <StatusChip status={app.stage} />
