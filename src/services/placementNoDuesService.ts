@@ -101,7 +101,32 @@ export interface AuthUser {
   name: string;
   role: 'incharge' | 'student';
   studentId?: string;
+  rollNo?: string;
   department?: string;
+  active?: boolean;
+  passwordChanged?: boolean;
+}
+
+export interface UserDoc {
+  uid: string;
+  email: string;
+  name: string;
+  role: 'incharge' | 'student';
+  studentId?: string;
+  rollNo?: string;
+  department?: string;
+  active: boolean;
+  passwordChanged: boolean;
+  createdAt?: string;
+}
+
+export interface StudentDoc {
+  rollNo: string;
+  studentId: string;
+  email: string;
+  name: string;
+  uid: string;
+  createdAt?: string;
 }
 
 // -------------------------------------------------------------
@@ -1287,7 +1312,58 @@ const STORAGE_KEYS = {
   CATEGORIES: 'apex_portal_categories_v1',
   CLEARANCES: 'apex_portal_clearances_v1',
   CURRENT_USER: 'apex_portal_current_user_v1',
+  USERS: 'apex_portal_users_v1',
+  STUDENT_DOCS: 'apex_portal_student_docs_v1',
+  PASSWORDS: 'apex_portal_passwords_v1',
 };
+
+export function createInitialUserDocs(): Record<string, UserDoc> {
+  const users: Record<string, UserDoc> = {};
+
+  // Incharge user
+  users['usr-incharge'] = {
+    uid: 'usr-incharge',
+    email: 'placement.officer@apex.edu',
+    name: 'Dr. V. Ramanathan',
+    role: 'incharge',
+    active: true,
+    passwordChanged: true,
+    createdAt: '2026-01-01',
+  };
+
+  // Student users (seeded with active: true, passwordChanged: false)
+  INITIAL_STUDENTS.forEach((s) => {
+    users[s.id] = {
+      uid: s.id,
+      email: `${s.rollNo.toLowerCase()}@apex.edu`,
+      name: s.name,
+      role: 'student',
+      studentId: s.id,
+      rollNo: s.rollNo,
+      department: s.department,
+      active: true,
+      passwordChanged: false,
+      createdAt: '2026-01-01',
+    };
+  });
+
+  return users;
+}
+
+export function createInitialStudentDocs(): Record<string, StudentDoc> {
+  const docs: Record<string, StudentDoc> = {};
+  INITIAL_STUDENTS.forEach((s) => {
+    docs[s.rollNo] = {
+      rollNo: s.rollNo,
+      studentId: s.id,
+      email: `${s.rollNo.toLowerCase()}@apex.edu`,
+      name: s.name,
+      uid: s.id,
+      createdAt: '2026-01-01',
+    };
+  });
+  return docs;
+}
 
 class PortalStorage {
   private get<T>(key: string, fallback: T): T {
@@ -1309,7 +1385,11 @@ class PortalStorage {
   }
 
   getStudents(): Student[] {
-    return this.get<Student[]>(STORAGE_KEYS.STUDENTS, INITIAL_STUDENTS);
+    const list = this.get<Student[]>(STORAGE_KEYS.STUDENTS, INITIAL_STUDENTS);
+    return list.map((s) => ({
+      ...s,
+      email: `${s.rollNo.toLowerCase()}@apex.edu`,
+    }));
   }
 
   saveStudents(students: Student[]) {
@@ -1365,12 +1445,141 @@ class PortalStorage {
     }
   }
 
+  getUserDocs(): Record<string, UserDoc> {
+    const docs = this.get<Record<string, UserDoc>>(STORAGE_KEYS.USERS, createInitialUserDocs());
+    // Ensure all student user docs reflect official roll number email format (rollno@apex.edu)
+    Object.values(docs).forEach((u) => {
+      if (u.role === 'student' && u.rollNo) {
+        const rollPrefix = u.rollNo.toLowerCase();
+        if (!u.email.toLowerCase().startsWith(rollPrefix + '@')) {
+          u.email = `${rollPrefix}@apex.edu`;
+        }
+      }
+    });
+    return docs;
+  }
+
+  saveUserDocs(users: Record<string, UserDoc>) {
+    this.set(STORAGE_KEYS.USERS, users);
+  }
+
+  getUserDoc(uid: string): UserDoc | null {
+    const docs = this.getUserDocs();
+    return docs[uid] || null;
+  }
+
+  getUserDocByEmail(email: string): UserDoc | null {
+    const docs = this.getUserDocs();
+    const cleanEmail = email.trim().toLowerCase();
+    // 1. Direct email match
+    let found = Object.values(docs).find((u) => u.email.toLowerCase() === cleanEmail);
+    if (found) return found;
+
+    // 2. Roll number match (e.g. "21cs001@university.edu.in", "21cs001@apex.edu", or "21CS001")
+    const localPart = cleanEmail.includes('@') ? cleanEmail.split('@')[0] : cleanEmail;
+    found = Object.values(docs).find(
+      (u) =>
+        u.rollNo &&
+        (u.rollNo.toLowerCase() === cleanEmail ||
+          u.rollNo.toLowerCase() === localPart ||
+          u.email.toLowerCase().startsWith(localPart + '@'))
+    );
+    return found || null;
+  }
+
+  saveUserDoc(user: UserDoc) {
+    const docs = this.getUserDocs();
+    docs[user.uid] = user;
+    this.saveUserDocs(docs);
+  }
+
+  getStudentDocs(): Record<string, StudentDoc> {
+    return this.get<Record<string, StudentDoc>>(STORAGE_KEYS.STUDENT_DOCS, createInitialStudentDocs());
+  }
+
+  saveStudentDocs(docs: Record<string, StudentDoc>) {
+    this.set(STORAGE_KEYS.STUDENT_DOCS, docs);
+  }
+
+  getStudentDoc(rollNo: string): StudentDoc | null {
+    const docs = this.getStudentDocs();
+    const clean = rollNo.trim().toUpperCase();
+    if (docs[clean]) return docs[clean];
+    const localPart = clean.includes('@') ? clean.split('@')[0] : clean;
+    if (docs[localPart]) return docs[localPart];
+    // Check values
+    const found = Object.values(docs).find(
+      (d) =>
+        d.rollNo.toUpperCase() === clean ||
+        d.rollNo.toUpperCase() === localPart ||
+        d.email.toLowerCase() === rollNo.trim().toLowerCase()
+    );
+    return found || null;
+  }
+
+  saveStudentDoc(doc: StudentDoc) {
+    const docs = this.getStudentDocs();
+    docs[doc.rollNo.toUpperCase()] = doc;
+    this.saveStudentDocs(docs);
+  }
+
+  getUserPassword(email: string): string {
+    const passwords = this.get<Record<string, string>>(STORAGE_KEYS.PASSWORDS, {});
+    const cleanEmail = email.trim().toLowerCase();
+    if (passwords[cleanEmail]) return passwords[cleanEmail];
+    const localPart = cleanEmail.includes('@') ? cleanEmail.split('@')[0] : cleanEmail;
+    for (const [key, pwd] of Object.entries(passwords)) {
+      if (key.toLowerCase() === localPart || key.toLowerCase().startsWith(localPart + '@')) {
+        return pwd;
+      }
+    }
+    return passwords[cleanEmail] || 'Password@123';
+  }
+
+  setUserPassword(email: string, password: string) {
+    const passwords = this.get<Record<string, string>>(STORAGE_KEYS.PASSWORDS, {});
+    passwords[email.trim().toLowerCase()] = password;
+    this.set(STORAGE_KEYS.PASSWORDS, passwords);
+  }
+
+  toggleUserActive(uid: string, active: boolean) {
+    const docs = this.getUserDocs();
+    if (docs[uid]) {
+      docs[uid].active = active;
+      this.saveUserDocs(docs);
+    }
+    // Also check if matches by studentId
+    Object.values(docs).forEach((doc) => {
+      if (doc.studentId === uid || doc.uid === uid) {
+        doc.active = active;
+      }
+    });
+    this.saveUserDocs(docs);
+  }
+
+  setUserPasswordChanged(uid: string, passwordChanged: boolean) {
+    const docs = this.getUserDocs();
+    if (docs[uid]) {
+      docs[uid].passwordChanged = passwordChanged;
+      this.saveUserDocs(docs);
+    }
+    // If current logged-in user matches, update their session too
+    const current = this.getCurrentUser();
+    if (current && (current.id === uid || current.studentId === uid)) {
+      current.passwordChanged = passwordChanged;
+      this.saveCurrentUser(current);
+    }
+  }
+
   resetDemoData() {
     this.set(STORAGE_KEYS.STUDENTS, INITIAL_STUDENTS);
     this.set(STORAGE_KEYS.DRIVES, INITIAL_DRIVES);
     this.set(STORAGE_KEYS.APPLICATIONS, INITIAL_APPLICATIONS);
     this.set(STORAGE_KEYS.CATEGORIES, DEFAULT_CATEGORIES);
     this.set(STORAGE_KEYS.CLEARANCES, createInitialClearanceRecords());
+    this.set(STORAGE_KEYS.USERS, createInitialUserDocs());
+    this.set(STORAGE_KEYS.STUDENT_DOCS, createInitialStudentDocs());
+    this.set(STORAGE_KEYS.PASSWORDS, {});
   }
 
   deleteStudentsCascade(studentIds: string[]): {

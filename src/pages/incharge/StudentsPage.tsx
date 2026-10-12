@@ -8,7 +8,9 @@ import {
   getStudentNoDuesStatus,
   isApplicationValidOffer,
   Drive,
+  portalStorage,
 } from '../../services/placementNoDuesService';
+import { sendPasswordReset, toggleUserActiveStatus } from '../../services/firebaseAuthService';
 import { DataTable, Column } from '../../components/ui/DataTable';
 import { FilterBar, FilterField } from '../../components/ui/FilterBar';
 import { Button } from '../../components/ui/Button';
@@ -19,7 +21,7 @@ import { FormField } from '../../components/ui/FeedbackComponents';
 import { useToast } from '../../components/ui/Toast';
 import { PageHeader } from '../../components/ui/FeedbackComponents';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
-import { UserPlus, CheckCircle, FileText, ExternalLink, Trash2 } from 'lucide-react';
+import { UserPlus, CheckCircle, FileText, ExternalLink, Trash2, Mail, KeyRound, ShieldAlert, ShieldCheck, Loader2 } from 'lucide-react';
 
 interface StudentsPageProps {
   students: Student[];
@@ -218,6 +220,44 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
           ? `Permanently deleted ${deletedName || 'student'} and all associated progress, applications, and clearance records.`
           : `Permanently deleted ${deletedCount} students and all associated progress.`,
     });
+  };
+
+  // Password reset & Account active states
+  const [isSendingResetEmail, setIsSendingResetEmail] = useState(false);
+
+  const handleToggleAccountActive = async () => {
+    if (!profileDrawerStudent) return;
+    const currentDoc = portalStorage.getUserDocByEmail(profileDrawerStudent.email);
+    const newActive = !(currentDoc ? currentDoc.active !== false : true);
+    const uid = currentDoc ? currentDoc.uid : profileDrawerStudent.id;
+    await toggleUserActiveStatus(uid, newActive);
+    showToast({
+      type: 'success',
+      message: newActive
+        ? `Account activated for ${profileDrawerStudent.name}. Login access enabled.`
+        : `Account deactivated for ${profileDrawerStudent.name}. Login access disabled.`,
+    });
+    // Trigger re-render of profile drawer student
+    setProfileDrawerStudent({ ...profileDrawerStudent });
+  };
+
+  const handleSendResetEmail = async () => {
+    if (!profileDrawerStudent) return;
+    setIsSendingResetEmail(true);
+    try {
+      const msg = await sendPasswordReset(profileDrawerStudent.email);
+      showToast({
+        type: 'success',
+        message: msg,
+      });
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        message: err?.message || 'Failed to send password reset email.',
+      });
+    } finally {
+      setIsSendingResetEmail(false);
+    }
   };
 
   // Add Student Validation & Submit
@@ -751,6 +791,106 @@ export const StudentsPage: React.FC<StudentsPageProps> = ({
                   >
                     Save Changes
                   </Button>
+                </div>
+
+                {/* Account Security & Access Controls */}
+                <div className="mt-6 pt-4 border-t border-[#E4DFD3] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#6B6F6A]">
+                      Account Access & Authentication
+                    </span>
+                    {(() => {
+                      const userDoc = portalStorage.getUserDocByEmail(profileDrawerStudent.email);
+                      const isActive = userDoc ? userDoc.active !== false : true;
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-[0.06em] ${
+                            isActive
+                              ? 'bg-[#E8F3EE] text-[#1F4D3F] border border-[#C6E2D5]'
+                              : 'bg-[#FCECEE] text-[#9E2A2B] border border-[#F6C6CA]'
+                          }`}
+                        >
+                          {isActive ? (
+                            <>
+                              <ShieldCheck className="w-3 h-3 text-[#1F4D3F]" />
+                              <span>Active</span>
+                            </>
+                          ) : (
+                            <>
+                              <ShieldAlert className="w-3 h-3 text-[#9E2A2B]" />
+                              <span>Disabled</span>
+                            </>
+                          )}
+                        </span>
+                      );
+                    })()}
+                  </div>
+
+                  <div className="bg-[#FAF8F3] border border-[#E4DFD3] rounded-[6px] p-3.5 space-y-3.5">
+                    {/* Activate / Deactivate Toggle */}
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-medium text-[#1C1F1D]">
+                          Activate / Deactivate account
+                        </p>
+                        <p className="text-[11px] text-[#6B6F6A] mt-0.5">
+                          {(() => {
+                            const userDoc = portalStorage.getUserDocByEmail(profileDrawerStudent.email);
+                            const isActive = userDoc ? userDoc.active !== false : true;
+                            return isActive
+                              ? 'Student can sign in to the portal and check placements.'
+                              : 'Student login is disabled. Sign-in attempts will be blocked.';
+                          })()}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleToggleAccountActive}
+                        className={`h-8 px-3 text-xs font-medium rounded-[4px] border transition-colors cursor-pointer select-none ${
+                          (() => {
+                            const userDoc = portalStorage.getUserDocByEmail(profileDrawerStudent.email);
+                            const isActive = userDoc ? userDoc.active !== false : true;
+                            return isActive
+                              ? 'bg-white border-[#E4DFD3] text-[#9E2A2B] hover:bg-[#FCECEE] hover:border-[#F6C6CA]'
+                              : 'bg-[#1F4D3F] text-white border-[#1F4D3F] hover:bg-[#173C31]';
+                          })()
+                        }`}
+                      >
+                        {(() => {
+                          const userDoc = portalStorage.getUserDocByEmail(profileDrawerStudent.email);
+                          const isActive = userDoc ? userDoc.active !== false : true;
+                          return isActive ? 'Deactivate account' : 'Activate account';
+                        })()}
+                      </button>
+                    </div>
+
+                    {/* Send Password Reset Email Button */}
+                    <div className="pt-3 border-t border-[#E4DFD3] flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-medium text-[#1C1F1D]">
+                          Password recovery
+                        </p>
+                        <p className="text-[11px] text-[#6B6F6A] mt-0.5">
+                          Send a Firebase reset email to {profileDrawerStudent.email}
+                        </p>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={isSendingResetEmail}
+                        onClick={handleSendResetEmail}
+                        leftIcon={
+                          isSendingResetEmail ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Mail className="w-3.5 h-3.5 text-[#1F4D3F]" />
+                          )
+                        }
+                      >
+                        {isSendingResetEmail ? 'Sending...' : 'Send password reset email'}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Danger Zone: Complete deletion */}

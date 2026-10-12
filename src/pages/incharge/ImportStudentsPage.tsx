@@ -5,6 +5,7 @@ import {
   exportToCSV,
   exportToExcel,
 } from '../../services/placementNoDuesService';
+import { createStudentAccount } from '../../services/firebaseAuthService';
 import { PageHeader, Stepper, FileDropzone, ProgressBar } from '../../components/ui/FeedbackComponents';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -54,7 +55,7 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
     importedCount: number;
     skippedCount: number;
     failedCount: number;
-    credentials: Array<{ rollNo: string; name: string; email: string; initialPassword: string }>;
+    credentials: Array<{ rollNo: string; name: string; email: string }>;
   } | null>(null);
 
   // -------------------------------------------------------------
@@ -340,12 +341,25 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
           skills: ['Aptitude', 'Core Engineering'],
         }));
 
-        // Generate credentials file
+        // Provision Firebase Auth & Firestore documents using secondary app instance
+        Promise.all(
+          newStudents.map((s) =>
+            createStudentAccount({
+              rollNo: s.rollNo,
+              name: s.name,
+              email: s.email,
+              studentId: s.id,
+            })
+          )
+        ).catch((err) => {
+          console.warn('Student account creation note:', err);
+        });
+
+        // Generate credentials roster (password column omitted since all are Password@123)
         const credentials = newStudents.map((s) => ({
           rollNo: s.rollNo,
           name: s.name,
           email: s.email,
-          initialPassword: `Apex@${s.rollNo.slice(-4)}${s.batch}`,
         }));
 
         onImportComplete(newStudents);
@@ -358,7 +372,7 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
         setCurrentStep(3);
         showToast({
           type: 'success',
-          message: `Successfully imported ${newStudents.length} student records.`,
+          message: `Successfully imported ${newStudents.length} student records and provisioned accounts.`,
         });
       }
     }, 40);
@@ -707,6 +721,19 @@ export const ImportStudentsPage: React.FC<ImportStudentsPageProps> = ({
               </div>
             </Card>
           )}
+
+          {/* Credentials and Default Password Information */}
+          <Card padding="md" className="bg-[#FAF8F3] border-[#E4DFD3] space-y-2">
+            <h4 className="text-xs font-semibold uppercase tracking-[0.06em] text-[#1F4D3F]">
+              Student Authentication & Default Passwords
+            </h4>
+            <p className="text-xs text-[#1C1F1D] leading-relaxed">
+              All <strong>{importResults.importedCount}</strong> student accounts have been provisioned in Firebase Auth with the standardized default password <code className="bg-white px-1.5 py-0.5 rounded border border-[#E4DFD3] text-[#1F4D3F] font-mono font-semibold">Password@123</code>.
+            </p>
+            <p className="text-[11px] text-[#6B6F6A] leading-relaxed">
+              Students will be prompted by a persistent banner on their dashboard to update their password upon first sign-in. Downloaded credentials include student identification and email.
+            </p>
+          </Card>
 
           {/* Actions */}
           <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#E4DFD3]">

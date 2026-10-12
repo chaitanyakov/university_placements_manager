@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, Lock, Mail, ArrowLeft, Loader2 } from 'lucide-react';
 import { AuthUser, Student } from '../../services/placementNoDuesService';
+import {
+  loginWithFirebase,
+  sendPasswordReset,
+  isStudentEmail,
+  isStudentRollNumber,
+} from '../../services/firebaseAuthService';
 
 interface LoginPageProps {
   onLogin: (user: AuthUser) => void;
@@ -9,7 +15,7 @@ interface LoginPageProps {
 
 type SelectedRole = 'incharge' | 'student' | null;
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, students }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [selectedRole, setSelectedRole] = useState<SelectedRole>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,11 +23,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, students }) => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Forgot password flow
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+
   const handleSelectRole = (role: 'incharge' | 'student') => {
     setSelectedRole(role);
     setError(null);
     setEmail('');
     setPassword('');
+    setIsForgotPasswordOpen(false);
+    setResetMessage(null);
   };
 
   const handleBackToRoles = () => {
@@ -29,85 +43,70 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, students }) => {
     setError(null);
     setEmail('');
     setPassword('');
+    setIsForgotPasswordOpen(false);
+    setResetMessage(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedRole) return;
     setError(null);
 
-    const cleanEmail = email.trim().toLowerCase();
-
-    if (!cleanEmail || !password.trim()) {
-      setError('Please enter both your university email and password.');
+    const cleanInput = email.trim();
+    if (!cleanInput || !password.trim()) {
+      setError('Please enter both your university email/roll number and password.');
       return;
+    }
+
+    // Role and Roll-Number Email Differentiation
+    if (selectedRole === 'student') {
+      if (cleanInput.includes('@') && !isStudentEmail(cleanInput)) {
+        setError(
+          'Student login requires your official roll number email (e.g. rollno@university.edu.in). Faculty/staff accounts without a roll number must use "Login as In-Charge".'
+        );
+        return;
+      }
+    } else if (selectedRole === 'incharge') {
+      if (isStudentEmail(cleanInput) || isStudentRollNumber(cleanInput)) {
+        setError(
+          'Student accounts starting with a roll number cannot sign in as Faculty / Placement In-Charge. Please switch to "Login as Student".'
+        );
+        return;
+      }
     }
 
     setIsLoading(true);
 
-    // Simulate async authentication & Firestore users/{uid} lookup
-    setTimeout(() => {
+    try {
+      const user = await loginWithFirebase(cleanInput, password, selectedRole);
+      onLogin(user);
+    } catch (err: any) {
+      setError(err?.message || 'That email or password is incorrect.');
+    } finally {
       setIsLoading(false);
+    }
+  };
 
-      // 1. Check if user belongs to incharge group
-      const isInchargeAccount =
-        cleanEmail === 'placement.officer@apex.edu' ||
-        cleanEmail === 'admin@apex.edu' ||
-        cleanEmail === 'incharge@apex.edu';
+  const handleSendResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setResetMessage(null);
 
-      // 2. Check if user belongs to student group
-      const matchedStudent = students.find(
-        (s) => s.email.toLowerCase() === cleanEmail || s.rollNo.toLowerCase() === cleanEmail
-      );
+    const targetEmail = resetEmail.trim() || email.trim();
+    if (!targetEmail) {
+      setError('Please enter your registered university email.');
+      return;
+    }
 
-      // Check existence
-      if (!isInchargeAccount && !matchedStudent) {
-        setError("Your account isn't set up yet. Contact the placement office.");
-        return;
-      }
-
-      // Check simple password minimum requirement
-      if (password.length < 3) {
-        setError('That email or password is incorrect.');
-        return;
-      }
-
-      // 3. ROLE VERIFICATION: Compare user's doc role with door used
-      if (selectedRole === 'incharge') {
-        if (!isInchargeAccount && matchedStudent) {
-          // A student tried to use the In-Charge door
-          setError('This account is a Student account. Please use the Student login.');
-          return;
-        }
-
-        // Login success for In-Charge
-        onLogin({
-          id: 'usr-incharge',
-          email: 'placement.officer@apex.edu',
-          name: 'Dr. V. Ramanathan',
-          role: 'incharge',
-        });
-      } else if (selectedRole === 'student') {
-        if (isInchargeAccount && !matchedStudent) {
-          // An incharge tried to use the Student door
-          setError('This account is a Placement In-Charge account. Please use the In-Charge login.');
-          return;
-        }
-
-        if (matchedStudent) {
-          // Login success for Student
-          onLogin({
-            id: matchedStudent.id,
-            email: matchedStudent.email,
-            name: matchedStudent.name,
-            role: 'student',
-            studentId: matchedStudent.id,
-            department: matchedStudent.department,
-          });
-        } else {
-          setError("Your account isn't set up yet. Contact the placement office.");
-        }
-      }
-    }, 450);
+    setIsSendingReset(true);
+    try {
+      const msg = await sendPasswordReset(targetEmail);
+      setResetMessage(msg);
+    } catch (err: any) {
+      setError(err?.message || 'Unable to process reset request.');
+    } finally {
+      setIsSendingReset(false);
+    }
   };
 
   return (
@@ -155,20 +154,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, students }) => {
                   Manage students, recruitment drives, placement analytics and department no-dues clearances.
                 </p>
 
-                {/* Button (solid deep green, 44px) */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectRole('incharge')}
-                  className="h-[44px] px-6 text-sm font-medium bg-[#1F4D3F] text-white hover:bg-[#173C31] rounded-[6px] transition-colors duration-120 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C2501F] focus-visible:ring-offset-1 select-none"
-                >
-                  Login as In-Charge
-                </button>
+                {/* Button actions (In-Charge) */}
+                <div className="mb-8">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectRole('incharge')}
+                    className="h-[44px] px-7 text-sm font-medium bg-[#1F4D3F] text-white hover:bg-[#173C31] rounded-[6px] transition-colors duration-120 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C2501F] focus-visible:ring-offset-1 select-none text-center"
+                  >
+                    Login as In-Charge
+                  </button>
+                </div>
               </div>
 
               {/* Footer text (muted) */}
               <div className="mt-8 pt-6 border-t border-[#E4DFD3]">
                 <p className="text-xs text-[#6B6F6A]">
-                  Need access? Contact the university administrator.
+                  Placement in-charge and department faculty login.
                 </p>
               </div>
             </section>
@@ -197,20 +198,22 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, students }) => {
                   Track your applications, view published offers and check your no-dues status.
                 </p>
 
-                {/* Button (solid deep green, 44px) */}
-                <button
-                  type="button"
-                  onClick={() => handleSelectRole('student')}
-                  className="h-[44px] px-6 text-sm font-medium bg-[#1F4D3F] text-white hover:bg-[#173C31] rounded-[6px] transition-colors duration-120 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C2501F] focus-visible:ring-offset-1 select-none"
-                >
-                  Login as Student
-                </button>
+                {/* Button actions (Student) */}
+                <div className="mb-8">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectRole('student')}
+                    className="h-[44px] px-7 text-sm font-medium bg-[#1F4D3F] text-white hover:bg-[#173C31] rounded-[6px] transition-colors duration-120 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C2501F] focus-visible:ring-offset-1 select-none text-center"
+                  >
+                    Login as Student
+                  </button>
+                </div>
               </div>
 
               {/* Footer text (muted) */}
               <div className="mt-8 pt-6 border-t border-[#E4DFD3]">
                 <p className="text-xs text-[#6B6F6A] leading-normal">
-                  Your login was created by the placement office. Check your university email for your credentials.
+                  Students can only sign in via roll number email (e.g. rollno@university.edu.in).
                 </p>
               </div>
             </section>
@@ -246,12 +249,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, students }) => {
 
               {/* Form title */}
               <h2 className="font-serif text-2xl font-medium text-[#1C1F1D] mb-1.5">
-                {selectedRole === 'incharge'
+                {isForgotPasswordOpen
+                  ? 'Reset your password'
+                  : selectedRole === 'incharge'
                   ? 'Sign in as Placement In-Charge'
                   : 'Sign in as Student'}
               </h2>
               <p className="text-xs text-[#6B6F6A] mb-6">
-                {selectedRole === 'incharge'
+                {isForgotPasswordOpen
+                  ? 'Enter your registered university email to receive a secure password reset link.'
+                  : selectedRole === 'incharge'
                   ? 'Access administrative controls, recruitment drives, and clearance records.'
                   : 'Access your placement applications, interview rounds, and no-dues certificate.'}
               </p>
@@ -266,126 +273,171 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, students }) => {
                 </div>
               )}
 
-              {/* Login Form */}
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label
-                    htmlFor="login-email"
-                    className="block text-xs font-semibold uppercase tracking-[0.06em] text-[#6B6F6A] mb-1.5"
-                  >
-                    University email
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 text-[#6B6F6A] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      id="login-email"
-                      type="text"
-                      autoComplete="username"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder={
-                        selectedRole === 'incharge'
-                          ? 'placement.officer@apex.edu'
-                          : 'aarav.sharma@apex.edu or 21CS001'
-                      }
-                      className="w-full h-10 pl-9 pr-3 text-sm bg-white border border-[#E4DFD3] rounded-[4px] text-[#1C1F1D] placeholder:text-[#8C9189] focus:outline-none focus:border-[#1F4D3F] focus:ring-1 focus:ring-[#1F4D3F]"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="login-password"
-                    className="block text-xs font-semibold uppercase tracking-[0.06em] text-[#6B6F6A] mb-1.5"
-                  >
-                    Password
-                  </label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 text-[#6B6F6A] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      id="login-password"
-                      type={showPassword ? 'text' : 'password'}
-                      autoComplete="current-password"
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter password"
-                      className="w-full h-10 pl-9 pr-10 text-sm bg-white border border-[#E4DFD3] rounded-[4px] text-[#1C1F1D] placeholder:text-[#8C9189] focus:outline-none focus:border-[#1F4D3F] focus:ring-1 focus:ring-[#1F4D3F]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B6F6A] hover:text-[#1C1F1D] p-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C2501F] rounded"
-                      aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Sign In Button (44px, solid deep green, loading state) */}
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full h-[44px] mt-2 inline-flex items-center justify-center gap-2 rounded-[6px] text-sm font-medium bg-[#1F4D3F] text-white hover:bg-[#173C31] transition-colors duration-120 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C2501F] focus-visible:ring-offset-1 disabled:opacity-60 disabled:pointer-events-none select-none"
+              {/* Plain-Language Inline Success / Reset Alert */}
+              {resetMessage && (
+                <div
+                  role="status"
+                  className="mb-5 p-3 rounded-[4px] bg-[#E8F3EE] border border-[#C6E2D5] text-[#1F4D3F] text-xs leading-normal font-medium"
                 >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Signing in...</span>
-                    </>
-                  ) : (
-                    <span>Sign in</span>
-                  )}
-                </button>
-              </form>
+                  {resetMessage}
+                </div>
+              )}
 
-              {/* Demo Credentials Helper */}
-              <div className="mt-6 pt-4 border-t border-[#F2EFE9] text-xs text-[#6B6F6A]">
-                <p className="font-semibold text-[11px] uppercase tracking-wider text-[#1C1F1D] mb-1.5">
-                  Demo Credentials:
-                </p>
-                {selectedRole === 'incharge' ? (
+              {isForgotPasswordOpen ? (
+                /* FORGOT PASSWORD FORM */
+                <form onSubmit={handleSendResetPassword} className="space-y-4">
+                  <div>
+                    <label
+                      htmlFor="reset-email"
+                      className="block text-xs font-semibold uppercase tracking-[0.06em] text-[#6B6F6A] mb-1.5"
+                    >
+                      Registered university email
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-[#6B6F6A] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        id="reset-email"
+                        type="email"
+                        required
+                        value={resetEmail || email}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        placeholder="you@apex.edu"
+                        className="w-full h-10 pl-9 pr-3 text-sm bg-white border border-[#E4DFD3] rounded-[4px] text-[#1C1F1D] placeholder:text-[#8C9189] focus:outline-none focus:border-[#1F4D3F] focus:ring-1 focus:ring-[#1F4D3F]"
+                      />
+                    </div>
+                  </div>
+
                   <button
-                    type="button"
-                    onClick={() => {
-                      setEmail('placement.officer@apex.edu');
-                      setPassword('password123');
-                    }}
-                    className="text-left w-full hover:underline text-[#1F4D3F] block"
+                    type="submit"
+                    disabled={isSendingReset}
+                    className="w-full h-[44px] mt-2 inline-flex items-center justify-center gap-2 rounded-[6px] text-sm font-medium bg-[#1F4D3F] text-white hover:bg-[#173C31] transition-colors duration-120 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C2501F] focus-visible:ring-offset-1 disabled:opacity-60 disabled:pointer-events-none select-none"
                   >
-                    placement.officer@apex.edu · password123
+                    {isSendingReset ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Sending reset link...</span>
+                      </>
+                    ) : (
+                      <span>Send password reset link</span>
+                    )}
                   </button>
-                ) : (
-                  <div className="space-y-1">
+
+                  <div className="pt-2 text-center">
                     <button
                       type="button"
                       onClick={() => {
-                        setEmail('aarav.sharma@apex.edu');
-                        setPassword('password123');
+                        setIsForgotPasswordOpen(false);
+                        setError(null);
+                        setResetMessage(null);
                       }}
-                      className="text-left w-full hover:underline text-[#1F4D3F] block truncate"
+                      className="text-xs text-[#1F4D3F] hover:underline cursor-pointer"
                     >
-                      aarav.sharma@apex.edu (Aarav Sharma)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEmail('priya.patel@apex.edu');
-                        setPassword('password123');
-                      }}
-                      className="text-left w-full hover:underline text-[#1F4D3F] block truncate"
-                    >
-                      priya.patel@apex.edu (Priya Patel)
+                      ← Back to sign in
                     </button>
                   </div>
-                )}
-              </div>
+                </form>
+              ) : (
+                <>
+                  {/* MAIN LOGIN FORM */}
+                  <form onSubmit={handleSubmit} className="space-y-4">
+                  <div>
+                    <label
+                      htmlFor="login-email"
+                      className="block text-xs font-semibold uppercase tracking-[0.06em] text-[#6B6F6A] mb-1.5"
+                    >
+                      {selectedRole === 'incharge' ? 'University faculty email' : 'Official roll number email or Roll No.'}
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 text-[#6B6F6A] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        id="login-email"
+                        type="text"
+                        autoComplete="username"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder={
+                          selectedRole === 'incharge'
+                            ? 'placement.officer@apex.edu'
+                            : '21cs001@university.edu.in or 21CS001'
+                        }
+                        className="w-full h-10 pl-9 pr-3 text-sm bg-white border border-[#E4DFD3] rounded-[4px] text-[#1C1F1D] placeholder:text-[#8C9189] focus:outline-none focus:border-[#1F4D3F] focus:ring-1 focus:ring-[#1F4D3F]"
+                      />
+                    </div>
+                    {selectedRole === 'student' && (
+                      <p className="mt-1 text-[11px] text-[#6B6F6A]">
+                        Students can only login via <span className="text-[#1F4D3F] font-mono font-medium">rollno@university.edu.in</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label
+                        htmlFor="login-password"
+                        className="block text-xs font-semibold uppercase tracking-[0.06em] text-[#6B6F6A]"
+                      >
+                        Password
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsForgotPasswordOpen(true);
+                          setResetEmail(email);
+                          setError(null);
+                          setResetMessage(null);
+                        }}
+                        className="text-[11px] text-[#1F4D3F] hover:underline cursor-pointer"
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+
+                    <div className="relative">
+                      <Lock className="w-4 h-4 text-[#6B6F6A] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        id="login-password"
+                        type={showPassword ? 'text' : 'password'}
+                        autoComplete="current-password"
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter password"
+                        className="w-full h-10 pl-9 pr-10 text-sm bg-white border border-[#E4DFD3] rounded-[4px] text-[#1C1F1D] placeholder:text-[#8C9189] focus:outline-none focus:border-[#1F4D3F] focus:ring-1 focus:ring-[#1F4D3F]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6B6F6A] hover:text-[#1C1F1D] p-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C2501F] rounded"
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Sign In Button (44px, solid deep green, loading state) */}
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full h-[44px] mt-2 inline-flex items-center justify-center gap-2 rounded-[6px] text-sm font-medium bg-[#1F4D3F] text-white hover:bg-[#173C31] transition-colors duration-120 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C2501F] focus-visible:ring-offset-1 disabled:opacity-60 disabled:pointer-events-none select-none"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Signing in...</span>
+                      </>
+                    ) : (
+                      <span>Sign in</span>
+                    )}
+                  </button>
+                </form>
+              </>
+            )}
             </div>
           </div>
         )}

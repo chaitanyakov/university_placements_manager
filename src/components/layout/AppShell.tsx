@@ -15,7 +15,6 @@ import {
   Menu,
   X,
   Search,
-  UserCheck,
 } from 'lucide-react';
 import { AuthUser, Student } from '../../services/placementNoDuesService';
 import { Button } from '../ui/Button';
@@ -42,7 +41,6 @@ interface AppShellProps {
   onSelectStudent?: (student: Student) => void;
   allStudents?: Student[];
   onResetDemoData?: () => void;
-  onSwitchUser?: (user: AuthUser) => void;
   children: React.ReactNode;
 }
 
@@ -54,7 +52,6 @@ export const AppShell: React.FC<AppShellProps> = ({
   onSelectStudent,
   allStudents = [],
   onResetDemoData,
-  onSwitchUser,
   children,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -509,70 +506,6 @@ export const AppShell: React.FC<AppShellProps> = ({
                           {user?.role === 'incharge' ? 'Placement In-Charge' : 'Student'}
                         </span>
                       </div>
-
-                      {/* Switch User section for rapid evaluation */}
-                      {onSwitchUser && (
-                        <div className="py-1 border-b border-[#E4DFD3]">
-                          <p className="px-2 text-[10px] uppercase font-semibold text-[#6B6F6A] tracking-wider mb-1">
-                            Switch View (Testing):
-                          </p>
-                          <button
-                            onClick={() => {
-                              onSwitchUser({
-                                id: 'usr-incharge',
-                                email: 'placement.officer@apex.edu',
-                                name: 'Dr. V. Ramanathan',
-                                role: 'incharge',
-                              });
-                              setUserDropdownOpen(false);
-                            }}
-                            className="w-full text-left px-2.5 py-1 text-xs hover:bg-[#FAF8F3] rounded text-[#1C1F1D] flex items-center justify-between"
-                          >
-                            <span>Placement In-Charge</span>
-                            {user?.role === 'incharge' && (
-                              <UserCheck className="w-3.5 h-3.5 text-[#1F4D3F]" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => {
-                              onSwitchUser({
-                                id: 'stu-1',
-                                email: 'aarav.sharma@apex.edu',
-                                name: 'Aarav Sharma',
-                                role: 'student',
-                                studentId: 'stu-1',
-                                department: 'Computer Science & Engineering',
-                              });
-                              setUserDropdownOpen(false);
-                            }}
-                            className="w-full text-left px-2.5 py-1 text-xs hover:bg-[#FAF8F3] rounded text-[#1C1F1D] flex items-center justify-between"
-                          >
-                            <span>Aarav Sharma (Student)</span>
-                            {user?.studentId === 'stu-1' && (
-                              <UserCheck className="w-3.5 h-3.5 text-[#1F4D3F]" />
-                            )}
-                          </button>
-                          <button
-                            onClick={() => {
-                              onSwitchUser({
-                                id: 'stu-2',
-                                email: 'priya.patel@apex.edu',
-                                name: 'Priya Patel',
-                                role: 'student',
-                                studentId: 'stu-2',
-                                department: 'Computer Science & Engineering',
-                              });
-                              setUserDropdownOpen(false);
-                            }}
-                            className="w-full text-left px-2.5 py-1 text-xs hover:bg-[#FAF8F3] rounded text-[#1C1F1D] flex items-center justify-between"
-                          >
-                            <span>Priya Patel (Student)</span>
-                            {user?.studentId === 'stu-2' && (
-                              <UserCheck className="w-3.5 h-3.5 text-[#1F4D3F]" />
-                            )}
-                          </button>
-                        </div>
-                      )}
 
                       <button
                         onClick={() => {

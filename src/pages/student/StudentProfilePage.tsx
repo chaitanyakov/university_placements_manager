@@ -1,25 +1,33 @@
 import React, { useState } from 'react';
-import { Student } from '../../services/placementNoDuesService';
+import { AuthUser, Student } from '../../services/placementNoDuesService';
+import { changeStudentPassword } from '../../services/firebaseAuthService';
 import { Card, SectionHeader } from '../../components/ui/Card';
 import { FormField } from '../../components/ui/FeedbackComponents';
 import { Button } from '../../components/ui/Button';
 import { StatusChip } from '../../components/ui/StatusChip';
 import { useToast } from '../../components/ui/Toast';
-import { Lock, Check } from 'lucide-react';
+import { Lock, Loader2 } from 'lucide-react';
 
 interface StudentProfilePageProps {
   student: Student;
+  currentUser?: AuthUser | null;
+  onPasswordChanged?: () => void;
 }
 
-export const StudentProfilePage: React.FC<StudentProfilePageProps> = ({ student }) => {
+export const StudentProfilePage: React.FC<StudentProfilePageProps> = ({
+  student,
+  currentUser,
+  onPasswordChanged,
+}) => {
   const { showToast } = useToast();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
 
-  const handleChangePassword = (e: React.FormEvent) => {
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordError(null);
 
@@ -27,8 +35,8 @@ export const StudentProfilePage: React.FC<StudentProfilePageProps> = ({ student 
       setPasswordError('Please enter your current password.');
       return;
     }
-    if (newPassword.length < 6) {
-      setPasswordError('New password must be at least 6 characters.');
+    if (newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -36,13 +44,38 @@ export const StudentProfilePage: React.FC<StudentProfilePageProps> = ({ student 
       return;
     }
 
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-    showToast({
-      type: 'success',
-      message: 'Password changed successfully.',
-    });
+    const authUser: AuthUser = currentUser || {
+      id: student.id,
+      email: student.email,
+      name: student.name,
+      role: 'student',
+      studentId: student.id,
+      rollNo: student.rollNo,
+      active: true,
+      passwordChanged: false,
+    };
+
+    setIsUpdating(true);
+    try {
+      await changeStudentPassword({
+        currentUser: authUser,
+        currentPassword,
+        newPassword,
+      });
+
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      showToast({
+        type: 'success',
+        message: 'Password changed successfully. Default password flag cleared.',
+      });
+      onPasswordChanged?.();
+    } catch (err: any) {
+      setPasswordError(err?.message || 'Failed to update password. Please check your current password.');
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   return (
@@ -177,7 +210,7 @@ export const StudentProfilePage: React.FC<StudentProfilePageProps> = ({ student 
             />
           </FormField>
 
-          <FormField label="New Password" required helpText="Minimum 6 characters">
+          <FormField label="New Password" required helpText="Minimum 8 characters">
             <input
               type="password"
               required
@@ -197,8 +230,14 @@ export const StudentProfilePage: React.FC<StudentProfilePageProps> = ({ student 
             />
           </FormField>
 
-          <Button type="submit" variant="primary" size="md">
-            Update Password
+          <Button
+            type="submit"
+            variant="primary"
+            size="md"
+            disabled={isUpdating}
+            leftIcon={isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+          >
+            {isUpdating ? 'Updating Password...' : 'Update Password'}
           </Button>
         </form>
       </Card>

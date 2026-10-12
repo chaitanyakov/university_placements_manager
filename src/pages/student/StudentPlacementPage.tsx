@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Briefcase,
   ChevronRight,
+  X,
 } from 'lucide-react';
 
 interface StudentPlacementPageProps {
@@ -26,6 +27,8 @@ interface StudentPlacementPageProps {
   applications: Application[];
   onRegisterDrive: (driveId: string) => void;
   onNavigateToNoDues: () => void;
+  passwordChanged?: boolean;
+  onNavigateToProfile?: () => void;
 }
 
 const STAGE_ORDER: ApplicationStage[] = [
@@ -45,8 +48,11 @@ export const StudentPlacementPage: React.FC<StudentPlacementPageProps> = ({
   applications,
   onRegisterDrive,
   onNavigateToNoDues,
+  passwordChanged = false,
+  onNavigateToProfile,
 }) => {
   const { showToast } = useToast();
+  const [isBannerDismissed, setIsBannerDismissed] = React.useState(false);
 
   // Student's own applications ONLY
   const myApplications = applications.filter((a) => a.studentId === student.id);
@@ -73,9 +79,43 @@ export const StudentPlacementPage: React.FC<StudentPlacementPageProps> = ({
   ).length;
 
   const todayStr = new Date().toISOString().split('T')[0];
+  const showDefaultPasswordBanner = !passwordChanged && !isBannerDismissed;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* DISMISSIBLE DEFAULT PASSWORD WARNING BANNER */}
+      {showDefaultPasswordBanner && (
+        <div
+          role="alert"
+          className="bg-[#FCF6EE] border border-[#F3DFC7] text-[#8C4F1A] rounded-[6px] p-3.5 flex items-center justify-between gap-3 transition-all"
+        >
+          <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
+            <AlertTriangle className="w-4 h-4 text-[#C2501F] shrink-0" />
+            <span className="text-xs font-medium text-[#1C1F1D]">
+              You are using the default password. Please change it in Profile.
+            </span>
+            {onNavigateToProfile && (
+              <button
+                type="button"
+                onClick={onNavigateToProfile}
+                className="text-xs font-semibold text-[#C2501F] hover:underline cursor-pointer inline-flex items-center gap-0.5 ml-1"
+              >
+                <span>Change password</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsBannerDismissed(true)}
+            aria-label="Dismiss banner"
+            className="p-1 text-[#8C4F1A] hover:text-[#1C1F1D] rounded transition-colors cursor-pointer shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 1. Candidate Header Card */}
       <div className="bg-white border border-[#E4DFD3] rounded-[6px] p-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">

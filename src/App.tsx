@@ -243,9 +243,6 @@ export default function App() {
           setCurrentPage('students');
         }}
         onResetDemoData={handleResetDemoData}
-        onSwitchUser={(switchedUser) => {
-          handleLogin(switchedUser);
-        }}
       >
         {/* ROUTE GUARD 403 SCREEN */}
         {isStudentAttemptingInCharge ? (
@@ -262,6 +259,8 @@ export default function App() {
                 applications={applications}
                 onRegisterDrive={handleStudentRegisterDrive}
                 onNavigateToNoDues={() => setCurrentPage('my-nodues')}
+                passwordChanged={currentUser.passwordChanged ?? false}
+                onNavigateToProfile={() => setCurrentPage('profile')}
               />
             )}
 
@@ -278,7 +277,17 @@ export default function App() {
             )}
 
             {currentStudentObj && currentPage === 'profile' && (
-              <StudentProfilePage student={currentStudentObj} />
+              <StudentProfilePage
+                student={currentStudentObj}
+                currentUser={currentUser}
+                onPasswordChanged={() => {
+                  if (currentUser) {
+                    const updated = { ...currentUser, passwordChanged: true };
+                    setCurrentUser(updated);
+                    portalStorage.saveCurrentUser(updated);
+                  }
+                }}
+              />
             )}
           </>
         ) : (
